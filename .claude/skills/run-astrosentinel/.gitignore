@@ -1,0 +1,6 @@
+# Driver-local install and run artefacts. The driver and SKILL.md are the
+# committed deliverable; these are per-machine.
+node_modules/
+package-lock.json
+.logs/
+.shots/

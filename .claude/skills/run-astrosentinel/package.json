@@ -1,0 +1,9 @@
+{
+  "name": "run-astrosentinel-driver",
+  "private": true,
+  "type": "module",
+  "description": "Browser driver for the run-astrosentinel skill. Kept out of the pnpm workspace on purpose: it must not enter the app's dependency graph or its lockfile.",
+  "dependencies": {
+    "playwright-core": "^1.49.0"
+  }
+}

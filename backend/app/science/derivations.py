@@ -4,7 +4,7 @@ derivations.py
 Derived scientific quantities, each carrying its inputs, method and
 assumptions (spec sections 19-24, 33-34).
 
-This module is the single place where AstroSentinel turns observations into
+This module is the single place where Transient Event Detection turns observations into
 new numbers. Everything it produces obeys three rules:
 
   1. **A derived value never outlives its inputs.** If an input is UNKNOWN the

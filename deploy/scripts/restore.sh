@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # deploy/scripts/restore.sh
 # ─────────────────────────────────────────────────────────────────────────────
-# Restore a PostgreSQL backup for Cosmic Alert System.
+# Restore a PostgreSQL backup for Transient Event Detection.
 #
 # USAGE
 #   ./deploy/scripts/restore.sh backup_20240724_020000.sql.gz
@@ -31,7 +31,7 @@ POSTGRES_USER="${POSTGRES_USER:-postgres}"
 POSTGRES_DB="${POSTGRES_DB:-Astro-sentinel}"
 
 echo "$LOG_PREFIX ════════════════════════════════════════════"
-echo "$LOG_PREFIX  Cosmic Alert System — Database Restore"
+echo "$LOG_PREFIX  Transient Event Detection — Database Restore"
 echo "$LOG_PREFIX ════════════════════════════════════════════"
 echo "$LOG_PREFIX Backup file : $BACKUP_FILE"
 echo "$LOG_PREFIX Database    : $POSTGRES_DB"

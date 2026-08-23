@@ -1,7 +1,7 @@
 /**
  * bootstrap.ts
  *
- * Startup seeding guard for AstroSentinel.
+ * Startup seeding guard for Transient Event Detection.
  *
  * Rules
  * ─────

@@ -98,7 +98,7 @@ class SmtpEmailProvider implements EmailProvider {
       },
     });
 
-    const from = `"${process.env["NOTIFICATION_FROM_NAME"] ?? "AstroSentinel"}" <${process.env["NOTIFICATION_FROM_EMAIL"] ?? process.env["SMTP_USER"]}>`;
+    const from = `"${process.env["NOTIFICATION_FROM_NAME"] ?? "Transient Event Detection"}" <${process.env["NOTIFICATION_FROM_EMAIL"] ?? process.env["SMTP_USER"]}>`;
 
     try {
       const info = await transport.sendMail({
@@ -130,7 +130,7 @@ class ResendEmailProvider implements EmailProvider {
     const { Resend } = await import("resend");
     const resend     = new Resend(process.env["RESEND_API_KEY"]);
 
-    const from = `${process.env["NOTIFICATION_FROM_NAME"] ?? "AstroSentinel"} <${process.env["NOTIFICATION_FROM_EMAIL"] ?? "alerts@astrosentinel.io"}>`;
+    const from = `${process.env["NOTIFICATION_FROM_NAME"] ?? "Transient Event Detection"} <${process.env["NOTIFICATION_FROM_EMAIL"] ?? "alerts@astrosentinel.io"}>`;
 
     try {
       const { data, error } = await resend.emails.send({
@@ -166,7 +166,7 @@ class SendGridEmailProvider implements EmailProvider {
 
     const from = {
       email: process.env["NOTIFICATION_FROM_EMAIL"] ?? "alerts@astrosentinel.io",
-      name:  process.env["NOTIFICATION_FROM_NAME"]  ?? "AstroSentinel",
+      name:  process.env["NOTIFICATION_FROM_NAME"]  ?? "Transient Event Detection",
     };
 
     try {

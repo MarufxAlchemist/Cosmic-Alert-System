@@ -17,7 +17,7 @@
  *     NONE results are ephemeral and not worth storing.
  *   • Uses indexed queries — no full table scans.
  *
- * Phase 6.0A — AstroSentinel
+ * Phase 6.0A — Transient Event Detection
  */
 
 import { db, eventCorrelations, eventsTable } from "@workspace/db";

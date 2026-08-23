@@ -1,4 +1,4 @@
-# AI Agent Operating Rules — AstroSentinel
+# AI Agent Operating Rules — Transient Event Detection
 
 ## Primary Rule
 

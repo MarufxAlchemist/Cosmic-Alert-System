@@ -6,7 +6,7 @@
  * Exposes decide() which takes the current event state and makes a
  * send/suppress decision based on notification history and policy rules.
  *
- * Phase 5.5 — AstroSentinel
+ * Phase 5.5 — Transient Event Detection
  */
 
 import { getDeduplicationPolicy } from "./policy.js";

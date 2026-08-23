@@ -23,7 +23,7 @@
  *
  * Pure function — no I/O, no side effects.
  *
- * Phase 6.0A — AstroSentinel
+ * Phase 6.0A — Transient Event Detection
  */
 
 import type { CorrelationEvent, CorrelationMatch } from "./types.js";

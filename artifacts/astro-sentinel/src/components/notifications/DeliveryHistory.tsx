@@ -92,7 +92,7 @@ export function DeliveryHistory({ token }: { token: string | null }) {
         <div>
           <h3 className="text-sm font-semibold">Recent Deliveries</h3>
           <p className="text-xs text-muted-foreground">
-            Whether your alerts actually left AstroSentinel.
+            Whether your alerts actually left Transient Event Detection.
           </p>
         </div>
         <Button variant="ghost" size="sm" onClick={() => void load()} disabled={loading}>

@@ -13,7 +13,7 @@
  *   • The returned Thresholds object is a plain value type — immutable
  *     within a single classification call.
  *
- * Phase 5.2 — AstroSentinel
+ * Phase 5.2 — Transient Event Detection
  */
 
 // ---------------------------------------------------------------------------

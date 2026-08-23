@@ -3,7 +3,7 @@
  * ---------------------------------------------------------
  * Public API for the deduplication module.
  *
- * Phase 5.5 — AstroSentinel
+ * Phase 5.5 — Transient Event Detection
  */
 
 export type {

@@ -20,7 +20,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Cosmic Alert System API",
+    title="Transient Event Detection API",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -30,7 +30,7 @@ app = FastAPI(
 def root():
     return {
         "status":  "online",
-        "service": "Cosmic Alert System",
+        "service": "Transient Event Detection",
     }
 
 

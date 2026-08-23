@@ -1,4 +1,4 @@
-# DATABASE.md — AstroSentinel
+# DATABASE.md — Transient Event Detection
 
 > Last updated: 2026-08-06
 

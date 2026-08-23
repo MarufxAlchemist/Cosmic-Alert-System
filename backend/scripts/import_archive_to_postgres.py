@@ -237,7 +237,7 @@ def main() -> None:
     bar  = "=" * 60
 
     print(f"\n{bar}")
-    print("  AstroSentinel — GCN Archive -> PostgreSQL Importer")
+    print("  Transient Event Detection — GCN Archive -> PostgreSQL Importer")
     print(bar)
     print(f"  Input    : {args.input}")
     print(f"  Dry run  : {args.dry_run}")

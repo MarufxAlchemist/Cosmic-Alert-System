@@ -10,7 +10,7 @@
  * Both are non-throwing — failures are logged and surfaced as null / void.
  * The engine must never block email dispatch due to a DB error.
  *
- * Phase 5.5 — AstroSentinel
+ * Phase 5.5 — Transient Event Detection
  */
 
 import { db, notificationHistory } from "@workspace/db";

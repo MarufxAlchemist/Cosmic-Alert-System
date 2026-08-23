@@ -1,4 +1,4 @@
-# API_REFERENCE.md — AstroSentinel
+# API_REFERENCE.md — Transient Event Detection
 
 > Last updated: 2026-08-06
 

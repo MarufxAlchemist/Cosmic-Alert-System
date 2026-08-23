@@ -3,7 +3,7 @@
  * ---------------------------------------------------------
  * All type definitions. No logic, no I/O.
  *
- * Phase 5.5 — AstroSentinel
+ * Phase 5.5 — Transient Event Detection
  */
 
 // ---------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-# Cosmic Alert System — Complete Project Analysis
+# Transient Event Detection — Complete Project Analysis
 
 > **Generated:** 2026-06-14  
 > **Auditor roles:** Senior Software Architect · Technical Lead · DevOps Engineer · Security Auditor · Code Reviewer  
@@ -32,7 +32,7 @@
 
 ### Project Purpose
 
-**Cosmic Alert System** is a real-time, multi-messenger astrophysical event alert platform. It ingests high-priority transient alerts — Gravitational Waves (GW), Gamma-ray Bursts (GRB), Fast Radio Bursts (FRB), and Neutrinos (NU) — from NASA's General Coordinates Network (GCN) Kafka broker and presents them to astronomical research teams through a live, collaborative web dashboard.
+**Transient Event Detection** is a real-time, multi-messenger astrophysical event alert platform. It ingests high-priority transient alerts — Gravitational Waves (GW), Gamma-ray Bursts (GRB), Fast Radio Bursts (FRB), and Neutrinos (NU) — from NASA's General Coordinates Network (GCN) Kafka broker and presents them to astronomical research teams through a live, collaborative web dashboard.
 
 ### Core Functionality
 
@@ -1722,7 +1722,7 @@ pnpm build   # runs typecheck then builds all artifacts
 ╚══════════════════════════════════════════════════════╝
 ```
 
-**Summary for new developers:** The Cosmic Alert System has a technically sound and well-architected scientific data pipeline. The GCN Kafka integration, alert normalization, quality filtering, and WebSocket real-time delivery are all solid. The database schema is comprehensive and forward-looking (pgvector, PostGIS, TimescaleDB). The main concerns are **security** (credentials in `.env`, missing auth on public endpoints) and **deployment readiness** (no containerization, no CI/CD). Addressing the Critical and High security issues should be the first priority before any production use. Once those are resolved, this is a strong foundation for a production-grade multi-messenger astronomy alert platform.
+**Summary for new developers:** The Transient Event Detection has a technically sound and well-architected scientific data pipeline. The GCN Kafka integration, alert normalization, quality filtering, and WebSocket real-time delivery are all solid. The database schema is comprehensive and forward-looking (pgvector, PostGIS, TimescaleDB). The main concerns are **security** (credentials in `.env`, missing auth on public endpoints) and **deployment readiness** (no containerization, no CI/CD). Addressing the Critical and High security issues should be the first priority before any production use. Once those are resolved, this is a strong foundation for a production-grade multi-messenger astronomy alert platform.
 
 ---
 

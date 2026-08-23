@@ -1,7 +1,7 @@
 /**
  * providers/wechat/formatter.ts
  * -----------------------------
- * Renders a validated AstroSentinel event as a WeCom markdown message.
+ * Renders a validated Transient Event Detection event as a WeCom markdown message.
  *
  * TWO RULES, BOTH INHERITED FROM THE SCIENCE LAYER
  *
@@ -191,7 +191,7 @@ export function renderWeComMarkdown(
   // ── Link ──
   if (payload.eventUrl) {
     lines.push("");
-    lines.push(opts.plain ? payload.eventUrl : `[Open event in AstroSentinel](${payload.eventUrl})`);
+    lines.push(opts.plain ? payload.eventUrl : `[Open event in Transient Event Detection](${payload.eventUrl})`);
   }
 
   return lines.filter((l) => l !== null).join("\n");
@@ -212,7 +212,7 @@ export function renderWeComTest(): string {
     `**Provider:** WeCom group robot`,
     `**Time:** ${now} UTC`,
     "",
-    "AstroSentinel notification service is configured correctly.",
+    "Transient Event Detection notification service is configured correctly.",
     "",
     "> This is a test. No astrophysical event is associated with it.",
   ].join("\n");

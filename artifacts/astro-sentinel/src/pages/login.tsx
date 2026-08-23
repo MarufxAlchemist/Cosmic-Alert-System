@@ -103,7 +103,7 @@ export default function LoginPage() {
             <Telescope className="w-6 h-6 text-primary" />
           </div>
           <div className="text-center">
-            <h1 className="text-lg font-bold text-foreground tracking-tight">AstroSentinel</h1>
+            <h1 className="text-lg font-bold text-foreground tracking-tight">Transient Event Detection</h1>
             <p className="text-xs text-muted-foreground mt-0.5">Researcher Access Portal</p>
           </div>
         </div>

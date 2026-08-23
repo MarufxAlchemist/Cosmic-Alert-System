@@ -151,7 +151,7 @@ export interface ProviderHealth {
 /**
  * What a provider is asked to deliver.
  *
- * `event` is the validated, normalized AstroSentinel event — the same object
+ * `event` is the validated, normalized Transient Event Detection event — the same object
  * the dashboard renders. Providers format it; they never recompute from it.
  */
 export interface NotificationPayload {

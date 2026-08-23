@@ -282,7 +282,7 @@ router.post("/notifications/wechat/test", requireAuth, async (req, res) => {
       "[notifications/wechat] Test notification failed",
     );
     // 200 with ok:false — the request was handled correctly; the PROVIDER
-    // rejected it. A 5xx here would read as an AstroSentinel fault and send
+    // rejected it. A 5xx here would read as an Transient Event Detection fault and send
     // the user looking in the wrong place.
     res.json({ ok: false, kind: result.kind, error: redactSecrets(result.message) });
   } catch (err) {

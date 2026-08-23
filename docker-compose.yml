@@ -1,5 +1,5 @@
 ##############################################################################
-# docker-compose.yml — AstroSentinel / Cosmic Alert System
+# docker-compose.yml — Transient Event Detection
 #
 # THE single entry point for the entire stack.
 #

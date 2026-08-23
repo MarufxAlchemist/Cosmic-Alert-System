@@ -229,9 +229,9 @@ router.post("/team/invitations", requireAdmin, async (req, res) => {
     const provider = createEmailProvider();
     await provider.send({
       to: targetEmail,
-      subject: `You've been invited to join ${lab?.name ?? "AstroSentinel"}`,
-      text: `${actor.email} has invited you to join ${lab?.name ?? "AstroSentinel"} as a ${validRole}. Sign in at the AstroSentinel portal and register with this email address to accept.`,
-      html: `<p><strong>${actor.email}</strong> has invited you to join <strong>${lab?.name ?? "AstroSentinel"}</strong> as a <strong>${validRole}</strong>.</p><p>Sign in at the AstroSentinel portal and register with this email address to accept the invitation.</p>`,
+      subject: `You've been invited to join ${lab?.name ?? "Transient Event Detection"}`,
+      text: `${actor.email} has invited you to join ${lab?.name ?? "Transient Event Detection"} as a ${validRole}. Sign in at the Transient Event Detection portal and register with this email address to accept.`,
+      html: `<p><strong>${actor.email}</strong> has invited you to join <strong>${lab?.name ?? "Transient Event Detection"}</strong> as a <strong>${validRole}</strong>.</p><p>Sign in at the Transient Event Detection portal and register with this email address to accept the invitation.</p>`,
     });
   } catch (err) {
     logger.warn({ err, targetEmail }, "[team] Failed to send invitation email — invitation was still created");

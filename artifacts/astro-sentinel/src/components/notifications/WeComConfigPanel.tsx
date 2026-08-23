@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
  *
  *   • WeCom group robot webhook — outbound only. Someone in the organisation
  *     creates a robot inside a WeCom group and receives a URL. No end user
- *     logs in, ever. This is what AstroSentinel uses.
+ *     logs in, ever. This is what Transient Event Detection uses.
  *   • "Login with WeChat" (WeChat OAuth) — authenticates a person. It does NOT
  *     confer the right to send them messages.
  *   • WeChat Official Account template messages — can reach personal WeChat,

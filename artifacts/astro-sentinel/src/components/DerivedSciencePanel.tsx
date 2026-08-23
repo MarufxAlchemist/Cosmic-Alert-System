@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 /**
  * DerivedSciencePanel
  * ───────────────────
- * Renders quantities AstroSentinel computed rather than received
+ * Renders quantities Transient Event Detection computed rather than received
  * (spec sections 19-24, 33-34).
  *
  * The panel's job is as much to show what could NOT be derived as what could.
@@ -218,7 +218,7 @@ export function DerivedSciencePanel({ derived }: { derived?: Derived | null }) {
           Derived Quantities
         </CardTitle>
         <p className="text-xs text-muted-foreground">
-          Computed by AstroSentinel, not reported by the observatory. Each value
+          Computed by Transient Event Detection, not reported by the observatory. Each value
           carries the method and assumptions it depends on.
         </p>
       </CardHeader>

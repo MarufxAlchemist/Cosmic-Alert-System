@@ -1,7 +1,7 @@
 /**
  * styles.ts — Email Template System (Phase 5.3)
  * -----------------------------------------------
- * Centralised style definitions for the AstroSentinel scientific email template.
+ * Centralised style definitions for the Transient Event Detection scientific email template.
  *
  * Approach
  * ────────
@@ -28,7 +28,7 @@
  *   ✓ iOS Mail                        — full support incl. dark mode
  *   ✓ Samsung Internet                — inline + limited media query
  *
- * Phase 5.3 — AstroSentinel
+ * Phase 5.3 — Transient Event Detection
  */
 
 import type { NotificationPriority } from "../priorityEngine.js";

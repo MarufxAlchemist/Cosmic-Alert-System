@@ -4,7 +4,7 @@
  * Pure functions to compare the current event state against the last-sent
  * snapshot. Detects meaningful changes that warrant a new notification.
  *
- * Phase 5.5 — AstroSentinel
+ * Phase 5.5 — Transient Event Detection
  */
 
 import type { NotificationSnapshot, DeduplicationPolicy, ChangeReason } from "./types.js";

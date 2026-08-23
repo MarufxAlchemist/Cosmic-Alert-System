@@ -1,4 +1,4 @@
-# CHANGELOG_AI.md — AstroSentinel
+# CHANGELOG_AI.md — Transient Event Detection
 
 AI coding session log. Newest entries at top. Never rewrite previous entries.
 

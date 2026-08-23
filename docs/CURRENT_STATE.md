@@ -1,4 +1,4 @@
-# CURRENT_STATE.md — AstroSentinel
+# CURRENT_STATE.md — Transient Event Detection
 
 > Last updated: 2026-08-16
 

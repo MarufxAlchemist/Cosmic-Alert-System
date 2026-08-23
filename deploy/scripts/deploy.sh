@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # deploy/scripts/deploy.sh
 # ─────────────────────────────────────────────────────────────────────────────
-# First-time deployment script for Cosmic Alert System on a Linux VPS.
+# First-time deployment script for Transient Event Detection on a Linux VPS.
 # Run ONCE after cloning the repository.
 #
 # PREREQUISITES (handled by this script):
@@ -23,7 +23,7 @@ LOG_PREFIX="[$(date '+%Y-%m-%d %H:%M:%S')] [deploy]"
 cd "$PROJECT_ROOT"
 
 echo "$LOG_PREFIX ═══════════════════════════════════════════════"
-echo "$LOG_PREFIX  Cosmic Alert System — First Deployment"
+echo "$LOG_PREFIX  Transient Event Detection — First Deployment"
 echo "$LOG_PREFIX ═══════════════════════════════════════════════"
 
 # ── Pre-flight checks ─────────────────────────────────────────────────────────

@@ -45,7 +45,7 @@
  *           ─────────────────────────────────────────────────
  *           FOOTER        ← timestamp, version, config hint
  *
- * Phase 5.3 — AstroSentinel
+ * Phase 5.3 — Transient Event Detection
  */
 
 import type { NotificationPriority } from "../priorityEngine.js";
@@ -326,7 +326,7 @@ function buildHtml(
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="color-scheme" content="light dark">
   <meta name="supported-color-schemes" content="light dark">
-  <title>AstroSentinel Alert — ${input.eventId}</title>
+  <title>Transient Event Detection Alert — ${input.eventId}</title>
   <!--[if mso]>
   <noscript>
     <xml><o:OfficeDocumentSettings><o:AllowPNG/><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml>
@@ -525,7 +525,7 @@ function buildText(
     hr,
     `Generated : ${formatDetectionTime(input.generatedAt)}`,
     `Version   : ${input.appVersion}`,
-    "AstroSentinel Automated Alert System",
+    "Transient Event Detection Automated Alert System",
     hr,
   );
 

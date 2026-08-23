@@ -11,7 +11,7 @@
  *   DEDUP_LOCALIZATION_PCT     Minimum error-radius reduction % to re-send [25]
  *   DEDUP_SEND_ON_CONFIRMED    Always send on "confirmed" lifecycle         [true]
  *
- * Phase 5.5 — AstroSentinel
+ * Phase 5.5 — Transient Event Detection
  */
 
 import type { DeduplicationPolicy } from "./types.js";

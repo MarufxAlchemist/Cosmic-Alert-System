@@ -4,7 +4,7 @@
  * Pure scientific value formatters for the email template.
  * No HTML — plain string transformations only.
  *
- * Phase 5.3 — AstroSentinel
+ * Phase 5.3 — Transient Event Detection
  */
 
 // ---------------------------------------------------------------------------

@@ -24,7 +24,7 @@
  *     3. classify() already accepts an optional aiFactors parameter.
  *     No existing rules or calling code need to change.
  *
- * Phase 5.2 — AstroSentinel
+ * Phase 5.2 — Transient Event Detection
  */
 
 import type { EventClassificationInput, ClassificationResult, ScoringFactor, PriorityLevel } from "./types.js";

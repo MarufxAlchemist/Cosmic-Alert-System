@@ -1,14 +1,14 @@
-# PROJECT_CONTEXT.md — AstroSentinel / Cosmic Alert System
+# PROJECT_CONTEXT.md — Transient Event Detection
 
 > Last updated: 2026-08-06
 
 ## What This Project Is
 
-**AstroSentinel** (also called Cosmic Alert System) is a real-time, multi-messenger astrophysical event alert platform. It ingests high-priority transient alerts — Gravitational Waves (GW), Gamma-ray Bursts (GRB), Fast Radio Bursts (FRB), and Neutrinos (NU) — from NASA's General Coordinates Network (GCN) Kafka broker and presents them to astronomical research teams through a live, collaborative web dashboard.
+**Transient Event Detection** is a real-time, multi-messenger astrophysical event alert platform. It ingests high-priority transient alerts — Gravitational Waves (GW), Gamma-ray Bursts (GRB), Fast Radio Bursts (FRB), and Neutrinos (NU) — from NASA's General Coordinates Network (GCN) Kafka broker and presents them to astronomical research teams through a live, collaborative web dashboard.
 
 ## Repository
 
-- **GitHub:** https://github.com/MarufxAlchemist/AstroSentinel
+- **GitHub:** https://github.com/MarufxAlchemist/Transient Event Detection
 - **Branch:** `main`
 - **Monorepo:** pnpm workspaces (`artifacts/*`, `lib/*`)
 

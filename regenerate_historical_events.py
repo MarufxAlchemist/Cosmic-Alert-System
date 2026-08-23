@@ -178,7 +178,7 @@ def main() -> None:
         sys.exit(1)
 
     print(f"\n{'='*60}")
-    print("AstroSentinel — Historical Events Regeneration")
+    print("Transient Event Detection — Historical Events Regeneration")
     print(f"{'='*60}")
     print(f"Source  : PostgreSQL  core.events")
     print(f"Output  : {args.out}")

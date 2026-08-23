@@ -1,4 +1,4 @@
-# Cosmic Alert System — Production Deployment Guide
+# Transient Event Detection — Production Deployment Guide
 
 > **Goal**: Deploy the entire stack on a Linux VPS using only `git clone` + `docker compose up -d`.
 

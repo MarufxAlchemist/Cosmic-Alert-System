@@ -1,6 +1,6 @@
 # WeChat Notifications (WeCom Group Robot)
 
-Delivers AstroSentinel alerts to WeChat via an official WeCom (企业微信) group
+Delivers Transient Event Detection alerts to WeChat via an official WeCom (企业微信) group
 robot webhook.
 
 ---
@@ -36,14 +36,14 @@ badge on something that cannot deliver.
 1. Open the **WeCom desktop or mobile app** and go to the group that should
    receive alerts.
 2. Group settings → **群机器人 / Group Robot** → **添加机器人 / Add Robot**.
-3. Name it (e.g. `AstroSentinel`) and confirm.
+3. Name it (e.g. `Transient Event Detection`) and confirm.
 4. Copy the **Webhook URL**. It looks like:
 
    ```
    https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=<KEY>
    ```
 
-5. In AstroSentinel: **Research Notification Center → Notification Channels →
+5. In Transient Event Detection: **Research Notification Center → Notification Channels →
    WeChat**, paste the URL, **Save webhook**, then **Send test notification**.
 
 > **The webhook URL is a bearer credential.** Anyone holding it can post to

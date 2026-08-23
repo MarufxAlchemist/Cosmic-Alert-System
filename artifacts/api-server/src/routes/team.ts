@@ -11,6 +11,45 @@ const router = Router();
 
 const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
+/**
+ * Where an invitee goes to accept.
+ *
+ * PUBLIC_APP_URL is the deployment's externally reachable address. It is NOT
+ * derivable from the request: behind the nginx/compose setup the api-server
+ * sees an internal host and port, so building the link from req.headers.host
+ * produces a URL that only resolves inside the Docker network.
+ *
+ * Falls back to localhost so a development invite is still clickable, and the
+ * fallback is logged once so a production deployment that forgot to set it is
+ * discoverable rather than silently mailing out unusable links.
+ */
+let _warnedMissingAppUrl = false;
+
+function publicAppUrl(): string {
+  const configured = process.env["PUBLIC_APP_URL"];
+  if (configured && configured.trim()) return configured.trim().replace(/\/+$/, "");
+
+  if (!_warnedMissingAppUrl) {
+    _warnedMissingAppUrl = true;
+    logger.warn(
+      "[team] PUBLIC_APP_URL is not set — invitation links will point at localhost:5173 " +
+        "and will not work for anyone outside this machine.",
+    );
+  }
+  return "http://localhost:5173";
+}
+
+/**
+ * The register form, with the invited address prefilled.
+ *
+ * The email must match: registration looks the invitation up BY EMAIL, so
+ * signing up with a different address fails the check with "Registration
+ * requires an invitation" and gives no hint why.
+ */
+function buildInviteUrl(email: string): string {
+  return `${publicAppUrl()}/login?register=1&email=${encodeURIComponent(email)}`;
+}
+
 // GET /team — any authenticated researcher
 router.get("/team", requireAuth, async (req, res) => {
   const actor = (req as Request & { user: AuthPayload }).user;
@@ -225,16 +264,74 @@ router.post("/team/invitations", requireAdmin, async (req, res) => {
     return;
   }
 
+  // The link the invitee actually needs. Without it the email said "sign in at
+  // the portal" and named no address, so even a delivered invitation left the
+  // recipient with nowhere to go.
+  //
+  // The email is prefilled on the register tab because registration matches an
+  // invitation BY EMAIL — signing up with a different address silently fails
+  // the invitation check and returns "Registration requires an invitation".
+  const inviteUrl = buildInviteUrl(targetEmail);
+  const labName = lab?.name ?? "Transient Event Detection";
+
+  // Delivery is REPORTED, never assumed.
+  //
+  // Two independent bugs made a failed invitation look successful: the SMTP
+  // provider returns {success:false} rather than throwing, so the old
+  // try/catch never fired; and the no-op provider used to return success
+  // outright. The result is now inspected and passed back to the caller, so
+  // an admin is told when an invitation was created but not delivered.
+  let delivery: {
+    sent: boolean;
+    provider: string;
+    skipped: boolean;
+    error: string | null;
+  };
+
   try {
     const provider = createEmailProvider();
-    await provider.send({
+    const result = await provider.send({
       to: targetEmail,
-      subject: `You've been invited to join ${lab?.name ?? "Transient Event Detection"}`,
-      text: `${actor.email} has invited you to join ${lab?.name ?? "Transient Event Detection"} as a ${validRole}. Sign in at the Transient Event Detection portal and register with this email address to accept.`,
-      html: `<p><strong>${actor.email}</strong> has invited you to join <strong>${lab?.name ?? "Transient Event Detection"}</strong> as a <strong>${validRole}</strong>.</p><p>Sign in at the Transient Event Detection portal and register with this email address to accept the invitation.</p>`,
+      subject: `You've been invited to join ${labName}`,
+      text:
+        `${actor.email} has invited you to join ${labName} as a ${validRole}.
+
+` +
+        `Accept the invitation by creating an account with THIS email address (${targetEmail}):
+` +
+        `${inviteUrl}
+
+` +
+        `The invitation expires on ${invitation.expiresAt.toUTCString()}.`,
+      html:
+        `<p><strong>${actor.email}</strong> has invited you to join ` +
+        `<strong>${labName}</strong> as a <strong>${validRole}</strong>.</p>` +
+        `<p><a href="${inviteUrl}">Accept the invitation</a></p>` +
+        `<p>You must register with this email address: <strong>${targetEmail}</strong>.</p>` +
+        `<p style="color:#64748b;font-size:12px">Expires ${invitation.expiresAt.toUTCString()}. ` +
+        `If the link does not work, open ${inviteUrl}</p>`,
     });
+
+    delivery = {
+      sent: result.success,
+      provider: provider.name,
+      skipped: result.skipped === true,
+      error: result.success ? null : (result.error ?? "Unknown email error"),
+    };
+
+    if (result.success) {
+      logger.info({ targetEmail, provider: provider.name }, "[team] Invitation email sent");
+    } else {
+      logger.error(
+        { targetEmail, provider: provider.name, skipped: result.skipped, error: result.error },
+        "[team] Invitation created but the email was NOT delivered",
+      );
+    }
   } catch (err) {
-    logger.warn({ err, targetEmail }, "[team] Failed to send invitation email — invitation was still created");
+    // A provider that throws rather than returning a result.
+    const message = err instanceof Error ? err.message : String(err);
+    delivery = { sent: false, provider: "unknown", skipped: false, error: message };
+    logger.error({ err, targetEmail }, "[team] Invitation email threw — invitation was still created");
   }
 
   res.status(201).json({
@@ -245,6 +342,13 @@ router.post("/team/invitations", requireAdmin, async (req, res) => {
       expiresAt: invitation.expiresAt,
       createdAt: invitation.createdAt,
     },
+    /**
+     * Always returned so the admin can act on a failure. `inviteUrl` is
+     * included regardless of delivery: when mail is not configured, sharing
+     * this link by hand is the whole recovery path.
+     */
+    delivery,
+    inviteUrl,
   });
 });
 

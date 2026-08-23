@@ -194,6 +194,29 @@ services:
       GCN_CIRCULAR_PROBABILISTIC_ASSOCIATION:  ${GCN_CIRCULAR_PROBABILISTIC_ASSOCIATION:-false}
       GCN_CIRCULAR_PROBABILISTIC_WINDOW_HOURS: ${GCN_CIRCULAR_PROBABILISTIC_WINDOW_HOURS:-48}
 
+      # ── Outbound email ──────────────────────────────────────────────────
+      # None of this was passed to the container before, so EMAIL_PROVIDER
+      # defaulted to "none" in every Docker deployment and no mail was ever
+      # sent — including team invitations, which were still reported as
+      # delivered. Set EMAIL_PROVIDER in .env to smtp | resend | sendgrid.
+      EMAIL_PROVIDER:          ${EMAIL_PROVIDER:-none}
+      SMTP_HOST:               ${SMTP_HOST:-}
+      SMTP_PORT:               ${SMTP_PORT:-587}
+      SMTP_SECURE:             ${SMTP_SECURE:-false}
+      SMTP_USER:               ${SMTP_USER:-}
+      SMTP_PASS:               ${SMTP_PASS:-}
+      RESEND_API_KEY:          ${RESEND_API_KEY:-}
+      SENDGRID_API_KEY:        ${SENDGRID_API_KEY:-}
+      NOTIFICATION_FROM_EMAIL: ${NOTIFICATION_FROM_EMAIL:-}
+      NOTIFICATION_FROM_NAME:  ${NOTIFICATION_FROM_NAME:-Transient Event Detection}
+
+      # The externally reachable address of this deployment. Used to build
+      # invitation links and event links in notifications. It cannot be
+      # derived from the request: inside compose the api-server only sees an
+      # internal host, so a link built from the Host header resolves nowhere
+      # outside the Docker network.
+      PUBLIC_APP_URL:          ${PUBLIC_APP_URL:-}
+
       # ── Notification providers ──────────────────────────────────────────
       # Encrypts provider credentials (e.g. the WeCom robot webhook) at rest
       # in alerts.alert_subscriptions.channel_config. Without it the WeChat

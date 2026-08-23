@@ -19,6 +19,13 @@ interface LabInvitation {
   createdAt: string;
 }
 
+interface InviteOutcome {
+  email: string;
+  /** The register link. Always present — it is the recovery path when mail fails. */
+  inviteUrl: string;
+  delivery: { sent: boolean; provider: string; skipped: boolean; error: string | null };
+}
+
 export default function TeamPage() {
   const { token, isAdmin } = useAuth();
   const [, navigate] = useLocation();
@@ -30,6 +37,13 @@ export default function TeamPage() {
   const [addRole, setAddRole] = useState<"researcher" | "admin">("researcher");
   const [addError, setAddError] = useState("");
   const [adding, setAdding] = useState(false);
+  /**
+   * Outcome of the LAST invite, kept so the admin learns whether the email
+   * actually left the building. An invitation row is created either way; only
+   * this tells them whether the person will hear about it.
+   */
+  const [lastInvite, setLastInvite] = useState<InviteOutcome | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (!token) { navigate("/login"); return; }
@@ -70,9 +84,20 @@ export default function TeamPage() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ email: addEmail, role: addRole }),
       });
-      const data = await res.json() as { invitation?: LabInvitation; error?: string };
+      const data = await res.json() as {
+        invitation?: LabInvitation;
+        error?: string;
+        inviteUrl?: string;
+        delivery?: InviteOutcome["delivery"];
+      };
       if (!res.ok) { setAddError(data.error ?? "Failed to send invitation"); return; }
       setInvitations(prev => [...prev, data.invitation!]);
+      // Record the outcome BEFORE clearing the field, so the panel can name
+      // the address the link belongs to.
+      if (data.inviteUrl && data.delivery) {
+        setLastInvite({ email: addEmail, inviteUrl: data.inviteUrl, delivery: data.delivery });
+        setCopied(false);
+      }
       setAddEmail("");
     } catch {
       setAddError("Network error");
@@ -145,6 +170,63 @@ export default function TeamPage() {
                 </select>
               </div>
               {addError && <p className="text-[10px] text-red-500">{addError}</p>}
+
+              {/* Delivery outcome.
+                  The invitation row exists either way — this says whether the
+                  invitee will actually hear about it. Previously the UI showed
+                  nothing here, so a silently undelivered invitation looked
+                  exactly like a delivered one. */}
+              {lastInvite && (
+                <div
+                  className={`mt-1 rounded border p-2.5 ${
+                    lastInvite.delivery.sent
+                      ? "border-emerald-500/40 bg-emerald-500/[0.06]"
+                      : "border-amber-500/40 bg-amber-500/[0.06]"
+                  }`}
+                >
+                  {lastInvite.delivery.sent ? (
+                    <p className="text-[10px] text-emerald-400">
+                      Invitation emailed to <span className="font-mono">{lastInvite.email}</span>{" "}
+                      via {lastInvite.delivery.provider}. If it does not arrive, check their spam
+                      folder or share the link below.
+                    </p>
+                  ) : (
+                    <p className="text-[10px] text-amber-400">
+                      <strong>Invitation created, but no email was sent.</strong>{" "}
+                      {lastInvite.delivery.skipped
+                        ? "No email provider is configured on the server (EMAIL_PROVIDER)."
+                        : lastInvite.delivery.error}{" "}
+                      Send this link to <span className="font-mono">{lastInvite.email}</span>{" "}
+                      yourself — it works regardless.
+                    </p>
+                  )}
+
+                  {/* Always shown, delivered or not: the link is the recovery
+                      path, and it is also what someone pastes into chat when
+                      the email lands in spam. */}
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <code className="flex-1 min-w-0 truncate rounded bg-background px-2 py-1 text-[10px] text-muted-foreground">
+                      {lastInvite.inviteUrl}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard?.writeText(lastInvite.inviteUrl).then(
+                          () => setCopied(true),
+                          () => setCopied(false),
+                        );
+                      }}
+                      className="shrink-0 rounded border border-border px-2 py-1 text-[10px] text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      {copied ? "Copied" : "Copy"}
+                    </button>
+                  </div>
+                  <p className="mt-1 text-[9px] text-muted-foreground">
+                    They must register with exactly this address — the invitation is matched by
+                    email.
+                  </p>
+                </div>
+              )}
               <button
                 type="submit"
                 disabled={adding}

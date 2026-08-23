@@ -12,9 +12,25 @@ interface ApiAuthResponse {
   error?: string;
 }
 
+/**
+ * An invitation link lands here as /login?register=1&email=<invited address>.
+ *
+ * Both parts matter. Registration matches an invitation BY EMAIL, so an
+ * invitee who retypes a different address gets "Registration requires an
+ * invitation" with no hint that the address is the problem — prefilling it
+ * removes the whole failure mode. Read once at mount rather than held in
+ * state, so a later edit by the user is never overwritten.
+ */
+function inviteFromUrl(): { register: boolean; email: string } {
+  if (typeof window === "undefined") return { register: false, email: "" };
+  const q = new URLSearchParams(window.location.search);
+  return { register: q.get("register") === "1", email: q.get("email") ?? "" };
+}
+
 export default function LoginPage() {
-  const [mode, setMode] = useState<Mode>("login");
-  const [email, setEmail] = useState("");
+  const invite = inviteFromUrl();
+  const [mode, setMode] = useState<Mode>(invite.register ? "register" : "login");
+  const [email, setEmail] = useState(invite.email);
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [error, setError] = useState("");

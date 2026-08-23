@@ -54,6 +54,15 @@ export interface EmailResult {
    * Permanent failures should NOT be retried.
    */
   isPermanent?: boolean;
+  /**
+   * true when nothing was even attempted because no email provider is
+   * configured. Distinct from a failure: nothing is wrong with the message or
+   * the address, the system simply cannot send mail.
+   *
+   * Callers that report to a human MUST surface this. Treating it as success
+   * is what made invitations look delivered when no mail ever left the box.
+   */
+  skipped?: boolean;
 }
 
 export interface EmailProvider {
@@ -69,11 +78,26 @@ class NoOpEmailProvider implements EmailProvider {
   readonly name = "none";
 
   async send(options: EmailOptions): Promise<EmailResult> {
-    logger.debug(
+    // success:false, NOT true.
+    //
+    // This previously returned success — so every caller believed the mail had
+    // been delivered when no provider existed at all. Team invitations were
+    // reported as sent, logged as sent, and shown as sent in the UI, while the
+    // invitee never received anything and had no way to find out.
+    //
+    // isPermanent stops the notification queue retrying something that can
+    // never succeed; `skipped` lets callers say "not configured" rather than
+    // "delivery failed", which are different things to tell an operator.
+    logger.warn(
       { to: options.to, subject: options.subject },
-      "[notifications/noop] Email sending is disabled (EMAIL_PROVIDER=none)",
+      "[notifications/noop] Email NOT sent — EMAIL_PROVIDER is unset or 'none'",
     );
-    return { success: true, messageId: "noop" };
+    return {
+      success: false,
+      skipped: true,
+      isPermanent: true,
+      error: "No email provider is configured (EMAIL_PROVIDER is unset or 'none').",
+    };
   }
 }
 

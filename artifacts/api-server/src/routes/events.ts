@@ -1,11 +1,12 @@
 import { Router } from "express";
 import { createHash } from "node:crypto";
 import { db, eventsTable, eventLocalizations, aiCorrelationAnalysis, eventRevisions } from "@workspace/db";
-import { desc, eq, and, sql } from "drizzle-orm";
+import { desc, eq, and, inArray, sql } from "drizzle-orm";
 import { ListEventsQueryParams, GetEventParams } from "@workspace/api-zod";
 import { CorrelationAgent, type CorrelationAnalysisResult } from "../services/ai/correlation-agent.js";
 import { createDefaultProvider } from "../services/ai/provider.js";
 import { logger } from "../lib/logger.js";
+import { EVENT_GROUPS, findGroup, groupedTypes } from "../lib/eventGroups.js";
 
 const router = Router();
 
@@ -82,16 +83,78 @@ function formatEvent(row: typeof eventsTable.$inferSelect) {
 // ─── GET /events ──────────────────────────────────────────────────────────────
 
 router.get("/events", async (req, res) => {
-  const parsed = ListEventsQueryParams.safeParse(req.query);
+  // `eventType` is validated HERE, not by ListEventsQueryParams.
+  //
+  // That schema is generated from openapi.yaml, where the enum is still
+  // [GRB, GW, FRB]. The database holds EP, NU and OTHER as well, so letting the
+  // generated enum gate this filter makes 66 of 305 events unfilterable and
+  // returns "Invalid query params" for a perfectly real event type. Stripping
+  // it before the parse keeps limit/offset validation while letting the actual
+  // archive decide which types exist.
+  const { eventType: rawEventType, ...restQuery } = req.query as Record<string, unknown>;
+
+  const parsed = ListEventsQueryParams.safeParse(restQuery);
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid query params" });
     return;
   }
 
-  const { limit = 50, offset = 0, eventType } = parsed.data;
+  const { limit = 50, offset = 0, observatory } = parsed.data;
+
+  let eventType: string | undefined;
+  if (typeof rawEventType === "string" && rawEventType !== "") {
+    const t = rawEventType.trim().toUpperCase();
+    // Any type the taxonomy accounts for. An unknown one is rejected rather
+    // than silently ignored, which would return the whole archive and look
+    // like an answer.
+    if (!groupedTypes().has(t)) {
+      res.status(400).json({
+        error: `Unknown eventType "${rawEventType}". Known types: ${[...groupedTypes()].sort().join(", ")}`,
+      });
+      return;
+    }
+    eventType = t;
+  }
 
   const conditions = [];
+
+  // ── Group filter ─────────────────────────────────────────────────────────
+  // `group` selects a whole messenger category, expanding server-side to the
+  // event_type values it spans (see lib/eventGroups.ts). This exists because
+  // `eventType` alone cannot express the archive: its generated enum is
+  // [GRB, GW, FRB], so EP, NU and OTHER events — 66 of 305 here — were
+  // unreachable by any filter the client could send.
+  //
+  // Read straight off req.query: ListEventsQueryParams does not model it, and
+  // Zod strips unknown keys rather than rejecting them.
+  const rawGroup = req.query["group"];
+  if (typeof rawGroup === "string" && rawGroup !== "") {
+    const group = findGroup(rawGroup);
+    if (!group) {
+      res.status(400).json({
+        error: `Unknown group "${rawGroup}". Valid groups: ${EVENT_GROUPS.map((g) => g.key).join(", ")}`,
+      });
+      return;
+    }
+    conditions.push(inArray(eventsTable.eventType, [...group.memberTypes]));
+  }
+
+  // Narrow within a group to one underlying event_type, so a scientist can
+  // separate Einstein Probe rows from GRB rows without losing the group view.
   if (eventType) conditions.push(eq(eventsTable.eventType, eventType));
+
+  // ── Observatory filter ───────────────────────────────────────────────────
+  // Previously parsed and then never applied: selecting "Swift" returned the
+  // entire archive unfiltered, which is worse than having no filter at all
+  // because the result looks like an answer.
+  //
+  // Substring, case-insensitive, on purpose. Stored values carry the
+  // instrument — "Swift (BAT)", "Fermi (GBM)", "Einstein Probe (WXT)",
+  // "LIGO (H1,L1)" — so equality against a mission name matches nothing.
+  if (typeof observatory === "string" && observatory !== "") {
+    conditions.push(sql`${eventsTable.observatory} ILIKE ${"%" + observatory + "%"}`);
+  }
+
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
   const [events, countResult] = await Promise.all([
@@ -149,6 +212,90 @@ router.get("/events/stats", async (req, res) => {
     recentRate: Number(recentResult[0]?.count ?? 0),
     latestEvent: latestResult[0] ? formatEvent(latestResult[0]) : null,
   });
+});
+
+// ─── GET /events/groups ──────────────────────────────────────────────────────
+//
+// The archive's browsable messenger categories, with EXACT ARCHIVE-WIDE counts.
+//
+// Registered before /:id so Express does not consume "groups" as an id.
+//
+// The counts here are the whole archive, not a page. The previous grouping was
+// computed in the browser over whichever 24 events happened to be on screen, so
+// its "8 on this page" could not be used to reason about coverage. A count that
+// changes when you turn the page is not a category count.
+//
+// `byType` is returned alongside `count` so a group that spans several
+// event_type labels shows its composition rather than merging them silently.
+//
+// `ungrouped` reports event_type values present in the database that belong to
+// no group. It should always be empty; if it is not, those events exist and are
+// invisible in the archive, and the taxonomy in lib/eventGroups.ts needs a new
+// entry. Reporting it is what stops that failing silently.
+
+router.get("/events/groups", async (_req, res) => {
+  try {
+    const rows = await db
+      .select({
+        eventType: eventsTable.eventType,
+        count: sql<number>`count(*)::int`,
+        // The outer column is written out in full, NOT interpolated as
+        // ${eventsTable.id}. Drizzle renders that as a bare "id", and inside
+        // this correlated subquery Postgres resolves a bare "id" against the
+        // INNER table — core.event_circulars also has an id — so the predicate
+        // silently becomes c.event_pk = c.id and every count comes back 0.
+        // No error, just plausible-looking zeros.
+        withCirculars: sql<number>`count(*) FILTER (WHERE EXISTS (
+          SELECT 1 FROM core.event_circulars c WHERE c.event_pk = "core"."events"."id"
+        ))::int`,
+      })
+      .from(eventsTable)
+      .groupBy(eventsTable.eventType);
+
+    const byType = new Map(
+      rows.map((r) => [r.eventType, { count: Number(r.count), withCirculars: Number(r.withCirculars) }]),
+    );
+
+    const groups = EVENT_GROUPS.map((g) => {
+      const parts = g.memberTypes.map((t) => ({
+        eventType: t,
+        count: byType.get(t)?.count ?? 0,
+        withCirculars: byType.get(t)?.withCirculars ?? 0,
+      }));
+      return {
+        key: g.key,
+        label: g.label,
+        description: g.description,
+        note: g.note ?? null,
+        memberTypes: g.memberTypes,
+        count: parts.reduce((a, p) => a + p.count, 0),
+        /** How many carry at least one GCN Circular — i.e. have a human-written history. */
+        withCirculars: parts.reduce((a, p) => a + p.withCirculars, 0),
+        byType: parts,
+      };
+    });
+
+    const known = groupedTypes();
+    const ungrouped = rows
+      .filter((r) => !known.has(r.eventType))
+      .map((r) => ({ eventType: r.eventType, count: Number(r.count) }));
+
+    if (ungrouped.length > 0) {
+      logger.warn(
+        { ungrouped },
+        "[events] event_type values belong to no archive group — these events are not browsable",
+      );
+    }
+
+    res.json({
+      totalEvents: groups.reduce((a, g) => a + g.count, 0),
+      groups,
+      ungrouped,
+    });
+  } catch (err) {
+    logger.error({ err }, "[events] GET /events/groups failed");
+    res.status(500).json({ error: "Could not load event groups" });
+  }
 });
 
 // ─── GET /events/:id/localizations ───────────────────────────────────────────
@@ -288,7 +435,7 @@ function angularSeparation(
 //
 //   multi_messenger  — different physical messengers from (possibly) the same
 //                      astrophysical source (GRB+GW, GRB+ν, EP+GW …).
-//                      This is the primary scientific target of AstroSentinel.
+//                      This is the primary scientific target of Transient Event Detection.
 //
 //   cross_detection  — same event type, same sky position, close in time.
 //                      Almost certainly the same physical event detected by
@@ -675,7 +822,11 @@ router.get("/events/:id/correlations/analysis", async (req, res) => {
   }
 
   // 7. Persist to cache — runs in a transaction so stale rows are evicted atomically
-  const modelName = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
+  // The model name comes from the provider that actually ran, not from a
+  // vendor-specific env var: since provider selection became configurable
+  // (LLM_PROVIDER), reading GEMINI_MODEL here would stamp a DeepSeek answer
+  // with a Gemini model name.
+  const modelName = getAgent().providerName;
   const now       = new Date();
 
   try {

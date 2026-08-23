@@ -167,6 +167,33 @@ services:
       ORCID_CLIENT_ID:      ${ORCID_CLIENT_ID}
       ORCID_CLIENT_SECRET:  ${ORCID_CLIENT_SECRET}
 
+      # ── LLM provider (vendor-neutral) ───────────────────────────────────
+      # Preferred over the GEMINI_* variables above, which still work when
+      # LLM_PROVIDER is unset. Without these the container can only ever use
+      # Gemini, whatever .env says.
+      LLM_PROVIDER:         ${LLM_PROVIDER:-}
+      LLM_API_KEY:          ${LLM_API_KEY:-}
+      LLM_MODEL:            ${LLM_MODEL:-}
+      LLM_BASE_URL:         ${LLM_BASE_URL:-}
+      LLM_TIMEOUT_MS:       ${LLM_TIMEOUT_MS:-45000}
+
+      # ── GCN Circulars ───────────────────────────────────────────────────
+      # Both default ON in code, so omitting them leaves circular ingestion
+      # and AI enrichment running — this block exists so they can be turned
+      # OFF from .env, which was impossible before.
+      GCN_CIRCULARS_ENABLED:            ${GCN_CIRCULARS_ENABLED:-true}
+      # false still ingests, associates and serves circulars; they simply
+      # carry no AI extraction. The correct setting when no LLM is configured.
+      CIRCULAR_AI_EXTRACTION:           ${CIRCULAR_AI_EXTRACTION:-true}
+      CIRCULAR_EXTRACTION_POLL_MS:      ${CIRCULAR_EXTRACTION_POLL_MS:-15000}
+      CIRCULAR_EXTRACTION_BATCH:        ${CIRCULAR_EXTRACTION_BATCH:-3}
+      CIRCULAR_EXTRACTION_MAX_ATTEMPTS: ${CIRCULAR_EXTRACTION_MAX_ATTEMPTS:-4}
+      # Off by default: a circular's only timestamp is when a human pressed
+      # send, not the trigger time, so timing is a weak discriminator and a
+      # wrong attachment is worse than an honest UNMATCHED.
+      GCN_CIRCULAR_PROBABILISTIC_ASSOCIATION:  ${GCN_CIRCULAR_PROBABILISTIC_ASSOCIATION:-false}
+      GCN_CIRCULAR_PROBABILISTIC_WINDOW_HOURS: ${GCN_CIRCULAR_PROBABILISTIC_WINDOW_HOURS:-48}
+
       # ── Notification providers ──────────────────────────────────────────
       # Encrypts provider credentials (e.g. the WeCom robot webhook) at rest
       # in alerts.alert_subscriptions.channel_config. Without it the WeChat

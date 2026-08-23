@@ -51,6 +51,10 @@ import { recordReceived, recordAccepted, recordRejected } from "./filterReport";
 import { logger } from "./logger";
 import { dispatchForEvent } from "../notifications/notificationService";
 import { recordRevision } from "./revisionRecorder";
+import { handleCircularFrame } from "../circulars/bridge";
+import { reassociateOrphans } from "../circulars/ingestion";
+import { seedAliasesForEvent } from "../circulars/association";
+import { renderingsForEventId } from "../circulars/identity";
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -505,6 +509,31 @@ async function _handleAlert(envelope: Record<string, unknown>): Promise<void> {
       logger.error({ err }, "[notifications] dispatchForEvent threw unexpectedly"),
     );
 
+    // ── Attach circulars that were waiting for this event ──────────────────
+    // Circulars routinely arrive for events this archive does not yet hold —
+    // a backfill loaded out of order, or a notice topic that was not
+    // subscribed at the time. Registering the event's identifier spellings and
+    // sweeping the orphans turns those into attached scientific history the
+    // moment the event exists.
+    //
+    // Fire-and-forget and non-throwing on both calls: notice ingestion has
+    // already succeeded and must not be affected by either.
+    void (async () => {
+      await seedAliasesForEvent(
+        upserted.id,
+        upserted.eventId,
+        renderingsForEventId(upserted.eventId),
+      );
+      await reassociateOrphans(
+        upserted.id,
+        upserted.eventId,
+        upserted.labId,
+        renderingsForEventId(upserted.eventId),
+      );
+    })().catch((err) =>
+      logger.error({ err, eventId: upserted.eventId }, "[circulars] post-ingest sweep threw"),
+    );
+
     // ── Persist localization metadata (GW events only) ─────────────────────
     // Only runs when the Python normalizer emitted a fitsUrl.
     // Failure here is non-fatal: event ingestion is already complete.
@@ -611,6 +640,18 @@ function _connect(): void {
           active_connections: msg["active_connections"],
         },
         "[kafka-bridge] Heartbeat from Python backend",
+      );
+      return;
+    }
+
+    // ── GCN Circulars ─────────────────────────────────────────────────────
+    // A completely separate path: no topic allow-list, no applyAlertFilter,
+    // no core.events upsert. A human-authored scientific report is not a
+    // machine detection and must not be filtered as one. Fire-and-forget and
+    // non-throwing, so a circular can never disturb notice ingestion.
+    if (msgType === "circular") {
+      void handleCircularFrame(msg).catch((err) =>
+        logger.error({ err }, "[circular-bridge] handleCircularFrame threw unexpectedly"),
       );
       return;
     }

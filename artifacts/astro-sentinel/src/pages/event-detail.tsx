@@ -8,6 +8,8 @@ import { CorrelationAnalysisPanel } from "@/components/CorrelationAnalysisPanel"
 import { ValidationPanel } from "@/components/ValidationPanel";
 import { DerivedSciencePanel } from "@/components/DerivedSciencePanel";
 import { RevisionTimeline } from "@/components/RevisionTimeline";
+import { CircularsPanel } from "@/components/CircularsPanel";
+import { EvidenceTimeline } from "@/components/EvidenceTimeline";
 import { ResearchInterestPanel } from "@/components/ResearchInterestPanel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -289,6 +291,16 @@ export default function EventDetailPage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* The evolving scientific history of this event: every machine
+              notice and every human-authored circular on one axis. Placed in
+              the wide column because circular subjects and AI extractions are
+              long-form content that a narrow sidebar would make unreadable. */}
+          <EvidenceTimeline eventId={String(event.id)} />
+
+          {/* The circulars themselves, with the original text always reachable
+              and anything an AI read out of it clearly marked as such. */}
+          <CircularsPanel eventId={String(event.id)} />
         </div>
 
         <div className="space-y-6">

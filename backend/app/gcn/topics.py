@@ -60,6 +60,40 @@ TOPICS = [
     "gcn.notices.svom.voevent.eclairs",   # ECLAIRs coded-mask imager
 ]
 
+# ── GCN Circulars ────────────────────────────────────────────────────────────
+#
+# `gcn.circulars` carries human-authored scientific communications, NOT machine
+# notices. It is kept in its own list, and out of TOPIC_METADATA, on purpose:
+#
+#   * A circular has no event_type, no observatory and no priority of its own.
+#     It is a report ABOUT an event, and the event it belongs to is decided
+#     downstream by deterministic identifier matching — not by the topic it
+#     arrived on.
+#   * TOPIC_METADATA is the notice lookup. A circular reaching get_topic_meta()
+#     would be handed the GRB/Unknown/normal fallback and then normalized as if
+#     it were a detection, which is exactly the confusion this separation
+#     prevents.
+#
+# Payload shape (verified against the full 44,766-circular archive):
+#   circularId:int  subject:str  body:str  submitter:str  createdOn:int(ms)
+#   eventId?:str  bibcode?:str  email?:str  submittedHow?:str  format?:str
+#   version?:int  editedOn?:int  editedBy?:str
+# `version` is ABSENT on an original circular and means 1.
+CIRCULAR_TOPICS = [
+    "gcn.circulars",
+]
+
+# Everything the live consumer subscribes to. Notices and circulars share one
+# Kafka connection and one consumer group — a second connection would double
+# the broker credentials in play for no benefit.
+ALL_TOPICS = TOPICS + CIRCULAR_TOPICS
+
+
+def is_circular_topic(topic: str) -> bool:
+    """True when a message on this topic is a GCN Circular, not a Notice."""
+    return topic in CIRCULAR_TOPICS
+
+
 TOPIC_METADATA: dict[str, TopicMeta] = {
     "gcn.notices.chime.frb": TopicMeta(
         event_type="FRB",

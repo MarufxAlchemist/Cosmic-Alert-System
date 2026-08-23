@@ -96,6 +96,30 @@ export type {
   InsertAiScientificSummary,
 } from "./events.js";
 
+// ─── Core: GCN Circulars (migration 0019) ────────────────────────────────────
+export {
+  eventCirculars,
+  eventAliases,
+  circularExtractions,
+  eventCircularsRelations,
+  eventAliasesRelations,
+  circularExtractionsRelations,
+  CIRCULAR_ASSOCIATION_METHODS,
+  CIRCULAR_EXTRACTION_STATUSES,
+  CIRCULAR_EXTRACTION_FAILURE_KINDS,
+} from "./circulars.js";
+export type {
+  EventCircular,
+  InsertEventCircular,
+  EventAlias,
+  InsertEventAlias,
+  CircularExtraction,
+  InsertCircularExtraction,
+  CircularAssociationMethod,
+  CircularExtractionStatus,
+  CircularExtractionFailureKind,
+} from "./circulars.js";
+
 // ─── Alerts ───────────────────────────────────────────────────────────────────
 export {
   alertsSchema,

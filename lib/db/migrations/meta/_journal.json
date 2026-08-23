@@ -134,6 +134,13 @@
       "when": 1784884352894,
       "tag": "0018_notification_delivery",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1784884352895,
+      "tag": "0019_gcn_circulars",
+      "breakpoints": true
     }
   ]
 }

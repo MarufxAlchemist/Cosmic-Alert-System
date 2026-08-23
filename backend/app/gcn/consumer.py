@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from gcn_kafka import Consumer
 
 from app.gcn import voevent
-from app.gcn.topics import TOPICS, get_topic_meta
+from app.gcn.topics import ALL_TOPICS, CIRCULAR_TOPICS, TOPICS, get_topic_meta, is_circular_topic
 from app.gcn.normalizer import normalize
 from app.websocket.manager import manager, alert_buffer
 
@@ -47,7 +47,10 @@ consumer = Consumer(
     },
 )
 
-consumer.subscribe(TOPICS)
+# Notices and circulars share one connection. Subscribing to gcn.circulars is
+# additive: every notice topic is still in ALL_TOPICS, and process_alert()
+# routes by topic so a circular never touches the notice normalizer.
+consumer.subscribe(ALL_TOPICS)
 
 SCHEMA_VERSION = "1"
 
@@ -66,7 +69,7 @@ def listen():
     print("Connected to GCN Kafka")
     print("Subscribed Topics:")
 
-    for topic in TOPICS:
+    for topic in ALL_TOPICS:
         print(f"  • {topic}")
 
     print("\nWaiting for alerts...")
@@ -133,6 +136,17 @@ async def process_alert(message) -> None:
         if isinstance(value, bytes):
             value = value.decode("utf-8")
 
+        # ── Circulars take a completely separate path ────────────────────────
+        # A GCN Circular is a human-authored scientific communication, not a
+        # machine detection. It must not reach the notice normalizer (which
+        # would invent a detection time, a position and a significance for it)
+        # and must not reach the scientific alert filter downstream (which
+        # rejects sub-threshold *notices* — a category a human report does not
+        # belong to). Routing happens here, before any of that.
+        if is_circular_topic(topic):
+            await process_circular(topic, value)
+            return
+
         try:
             raw = json.loads(value)
         except json.JSONDecodeError:
@@ -196,3 +210,71 @@ async def process_alert(message) -> None:
 
     except Exception as e:
         print(f"[consumer] process_alert error: {e}")
+
+# ---------------------------------------------------------------------------
+# GCN Circulars
+# ---------------------------------------------------------------------------
+
+async def process_circular(topic: str, value: str) -> None:
+    """
+    Broadcast one GCN Circular to WebSocket clients, verbatim.
+
+    This function deliberately does almost nothing. It does NOT normalize, does
+    NOT extract coordinates from the body, and does NOT decide which event the
+    circular belongs to. All of that happens in the Node api-server, which owns
+    the database and can therefore match the circular against core.events
+    deterministically. Guessing here — with no access to the event table —
+    is how a circular ends up attached to the wrong burst.
+
+    Envelope (schema_version 1):
+    {
+        "type":           "circular",
+        "schema_version": "1",
+        "sent_at":        ISO-8601,
+        "sequence":       int,
+        "circular":       { ...the GCN payload, unmodified... }
+    }
+
+    The payload key is "circular", not "event": a consumer that mistook one for
+    the other would run a circular through the alert path and store a detection
+    that never happened.
+
+    Never raises. A malformed circular is logged and dropped at this hop; the
+    Kafka loop must not stop for it.
+    """
+    try:
+        payload = json.loads(value)
+    except json.JSONDecodeError as exc:
+        print(f"[consumer] circular on {topic} is not JSON ({exc}); skipped")
+        return
+
+    if not isinstance(payload, dict):
+        print(f"[consumer] circular on {topic} is not a JSON object; skipped")
+        return
+
+    circular_id = payload.get("circularId")
+    if circular_id is None:
+        print(f"[consumer] circular on {topic} has no circularId; skipped")
+        return
+
+    envelope = {
+        "type":           "circular",
+        "schema_version": SCHEMA_VERSION,
+        "sent_at":        datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
+        "sequence":       next(_sequence_counter),
+        "circular":       payload,
+    }
+
+    # Circulars are NOT pushed into alert_buffer. That buffer replays *alerts*
+    # to a reconnecting dashboard client; a circular in it would be handed to
+    # the alert history path and rendered as an event. Circular history is
+    # served from the database over HTTP instead, where it is complete rather
+    # than limited to a ring buffer.
+    await manager.broadcast(envelope)
+
+    print(
+        f"[consumer] Broadcasted circular "
+        f"topic={topic} circular_id={circular_id} "
+        f"version={payload.get('version') or 1} "
+        f"event_id={payload.get('eventId')!r}"
+    )

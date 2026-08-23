@@ -1,6 +1,6 @@
 # /etc/logrotate.d/cosmic-alert
 # ─────────────────────────────────────────────────────────────────────────────
-# Logrotate configuration for Cosmic Alert System host-level logs.
+# Logrotate configuration for Transient Event Detection host-level logs.
 #
 # INSTALLATION
 #   sudo cp deploy/logrotate/cosmic-alert /etc/logrotate.d/cosmic-alert

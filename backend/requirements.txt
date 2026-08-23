@@ -3,4 +3,24 @@ uvicorn
 python-dotenv
 gcn-kafka
 websockets
-astropy
+
+# ── Cosmology and sky geometry ───────────────────────────────────────────────
+astropy>=6.1
+
+# scipy is REQUIRED, not optional.
+#
+# astropy 8 made scipy an optional dependency. Without it,
+# astropy.cosmology falls back to a stub whose quad() raises
+# ModuleNotFoundError, so every comoving-distance integral fails and
+# luminosity_distance_mpc() returns None.
+#
+# The failure is silent by design: cosmology.stamp() still reports
+# available=True with Planck18, and the pipeline degrades each derived value
+# to UNKNOWN-with-a-reason rather than dropping the alert. So nothing crashes
+# and no test fails — the container simply stops deriving luminosity distance,
+# band-limited E_iso and every rest-frame quantity that needs a distance,
+# while the same code on a host with scipy derives them all correctly.
+#
+# This was caught only by running the deployed container and comparing its
+# output against the host. Do not remove.
+scipy>=1.11

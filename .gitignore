@@ -53,3 +53,11 @@ Thumbs.db
 *.env
 !*.env.example
 backend/.env
+
+# Local Compose customisation (host port remaps, per-machine tweaks).
+# docker-compose.yml stays the shared source of truth.
+docker-compose.override.yml
+
+# Reference texts consulted during development. Copyrighted third-party
+# material — cite it in code comments, do not redistribute it in the repo.
+docs/*.pdf

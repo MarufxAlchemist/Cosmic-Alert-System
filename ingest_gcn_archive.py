@@ -1,7 +1,7 @@
 ﻿"""
 ingest_gcn_archive.py
 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-Historical GCN Archive Ingestion Pipeline for AstroSentinel.
+Historical GCN Archive Ingestion Pipeline for Transient Event Detection.
 
 Source  : https://gcn.nasa.gov/circulars/archive.json.tar.gz
 Filters : createdOn >= 2026-01-01
@@ -437,7 +437,7 @@ def print_stats(total_circulars: int, events: list[dict], cutoff: datetime) -> N
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="Ingest GCN Circulars archive and produce AstroSentinel historical events JSON"
+        description="Ingest GCN Circulars archive and produce Transient Event Detection historical events JSON"
     )
     p.add_argument("--out",         type=Path,  default=DEFAULT_OUT,
                    help=f"Output file path (default: {DEFAULT_OUT})")
@@ -463,7 +463,7 @@ def main() -> None:
     bar    = "=" * 60
 
     print(f"\n{bar}")
-    print("  AstroSentinel â€” GCN Archive Ingestion Pipeline")
+    print("  Transient Event Detection â€” GCN Archive Ingestion Pipeline")
     print(bar)
     print(f"  Archive URL  : {ARCHIVE_URL}")
     print(f"  Local cache  : {args.archive}")
@@ -515,7 +515,7 @@ def main() -> None:
         json.dump(events, fh, indent=2, ensure_ascii=False, default=str)
 
     print(f"\n[OK] Written {len(events):,} events -> {args.out}")
-    print("  To ingest into AstroSentinel:")
+    print("  To ingest into Transient Event Detection:")
     print("    Copy the file to artifacts/api-server/recent_events.json")
     print("    (or load it via the bootstrap mechanism / a custom loader)")
     print()

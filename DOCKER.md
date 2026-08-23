@@ -1,4 +1,4 @@
-# AstroSentinel — Docker Guide
+# Transient Event Detection — Docker Guide
 
 ## Architecture
 

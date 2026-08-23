@@ -1,6 +1,7 @@
 import {
   pgSchema,
   bigserial,
+  bigint,
   uuid,
   text,
   boolean,
@@ -89,6 +90,21 @@ export const alertSubscriptions = alertsSchema.table("alert_subscriptions", {
     digest: false,
     instant: true,
   }),
+  /**
+   * Per-lifecycle notification rules (migration 0018).
+   * "update": "significant_only" defers to the Phase 6 revision delta engine,
+   * so a scientifically meaningful revision is never silently dropped while
+   * routine re-issues do not spam. A retraction always notifies.
+   */
+  lifecyclePolicy:  jsonb("lifecycle_policy").notNull()
+    .$type<Record<string, boolean | "significant_only">>()
+    .default({
+      preliminary: true,
+      initial: true,
+      update: "significant_only",
+      confirmed: true,
+      retraction: true,
+    }),
   throttleMinutes:  integer("throttle_minutes").notNull().default(0),
   isActive:         boolean("is_active").notNull().default(true),
   createdAt:        timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -100,21 +116,45 @@ export type InsertAlertSubscription = typeof alertSubscriptions.$inferInsert;
 
 // ─── alerts.alerts (TimescaleDB hypertable) ──────────────────────────────────
 
+/** Delivery lifecycle. See migration 0018 for the CHECK constraint. */
+export type DeliveryStatus =
+  | "pending" | "processing" | "sent" | "retrying" | "failed" | "cancelled";
+
 export const alerts = alertsSchema.table("alerts", {
   id:              bigserial("id", { mode: "bigint" }).primaryKey(),
   labId:           uuid("lab_id").notNull().references(() => labs.id),
-  eventId:         bigserial("event_id", { mode: "bigint" }).notNull()
+  // bigint, NOT bigserial: these are foreign keys. Declared as bigserial they
+  // carried a nextval() default, so an INSERT omitting either silently linked
+  // the delivery to an arbitrary event and an arbitrary subscription — another
+  // user's, potentially. Sequences dropped in migration 0018.
+  eventId:         bigint("event_id", { mode: "bigint" }).notNull()
                      .references(() => events.id),
-  subscriptionId:  bigserial("subscription_id", { mode: "bigint" }).notNull()
+  subscriptionId:  bigint("subscription_id", { mode: "bigint" }).notNull()
                      .references(() => alertSubscriptions.id),
   channel:         text("channel").notNull(),
-  status:          text("status").notNull().default("queued"),
+  status:          text("status").$type<DeliveryStatus>().notNull().default("pending"),
   payload:         jsonb("payload").notNull().$type<Record<string, unknown>>(),
   responseCode:    integer("response_code"),
   errorMessage:    text("error_message"),
   retryCount:      smallint("retry_count").notNull().default(0),
   sentAt:          timestamp("sent_at", { withTimezone: true }),
   deliveredAt:     timestamp("delivered_at", { withTimezone: true }),
+  // ── Delivery/retry state (migration 0018) ────────────────────────────────
+  /** Transport that ran, e.g. "wecom-webhook". Narrower than `channel`. */
+  provider:          text("provider"),
+  lastAttemptAt:     timestamp("last_attempt_at", { withTimezone: true }),
+  /** When the dispatcher may next claim this row. NULL = not scheduled. */
+  nextRetryAt:       timestamp("next_retry_at", { withTimezone: true }),
+  /** Provider's own code, verbatim (e.g. WeCom errcode 94000). */
+  errorCode:         text("error_code"),
+  providerMessageId: text("provider_message_id"),
+  /** Failure taxonomy from providers/types.ts, for explaining a dead job. */
+  failureKind:       text("failure_kind"),
+  /**
+   * eventId + revision + subscription + channel. UNIQUE in the database —
+   * application-level checks race under concurrent dispatcher ticks.
+   */
+  idempotencyKey:    text("idempotency_key"),
   createdAt:       timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   // ^ TimescaleDB hypertable partition key — defined via migration:
   //   SELECT create_hypertable('alerts.alerts', 'created_at', chunk_time_interval => INTERVAL '7 days');

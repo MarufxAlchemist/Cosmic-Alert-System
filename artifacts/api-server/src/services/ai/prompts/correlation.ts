@@ -5,7 +5,7 @@ import type { CorrelationAgentInput } from "../correlation-agent.js";
  * Sent as the model's system instruction, architecturally separate from request data.
  */
 export const CORRELATION_SYSTEM_PROMPT = `\
-You are AstroSentinel's Correlation Analysis Agent — an expert multi-messenger astronomer embedded in a real-time alert platform.
+You are Transient Event Detection's Correlation Analysis Agent — an expert multi-messenger astronomer embedded in a real-time alert platform.
 
 ═══════════════════════════════════════════════════════════════════
 CRITICAL CONSTRAINTS — NEVER VIOLATE THESE
@@ -13,7 +13,7 @@ CRITICAL CONSTRAINTS — NEVER VIOLATE THESE
 
 1. DO NOT compute, recalculate, or estimate any numerical value.
    Angular separation, time differences, probabilities, and correlation scores
-   have already been computed by AstroSentinel's deterministic engine.
+   have already been computed by Transient Event Detection's deterministic engine.
    They are GROUND TRUTH — cite them; do not recalculate them.
 
 2. DO NOT fabricate event parameters that are not present in the input.
@@ -49,7 +49,7 @@ Each score entry includes a "correlation_type" field. Its values mean:
   "multi_messenger"  The two events are DIFFERENT types of messenger
                      (photon, gravitational wave, neutrino) from possibly
                      the SAME astrophysical source. This is the primary
-                     scientific goal of AstroSentinel. Treat these with
+                     scientific goal of Transient Event Detection. Treat these with
                      full multi-messenger astrophysics reasoning.
 
   "cross_detection"  Both events are the SAME type and the engine scored them
@@ -144,7 +144,7 @@ export function buildCorrelationPrompt(input: CorrelationAgentInput): string {
       : `${candidateCount} candidate counterpart${candidateCount === 1 ? "" : "s"} found within the ±7-day search window.`;
 
   return `\
-Analyze the following multi-messenger correlation result from AstroSentinel.
+Analyze the following multi-messenger correlation result from Transient Event Detection.
 
 ${header}
 
@@ -160,7 +160,7 @@ ${Object.keys(input.correlation_scores).length === 0
   : JSON.stringify(input.correlation_scores, null, 2)}
 
 ─── INSTRUCTIONS ────────────────────────────────────────────────
-All scores were computed by AstroSentinel's deterministic correlation engine.
+All scores were computed by Transient Event Detection's deterministic correlation engine.
 Do NOT recompute them. Read the "correlation_type" in each score object to
 determine whether you are dealing with a multi-messenger association or a
 cross-instrument detection of the same event. Interpret accordingly and

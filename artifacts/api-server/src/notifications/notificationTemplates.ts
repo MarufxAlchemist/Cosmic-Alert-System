@@ -67,7 +67,8 @@ export interface TemplateInput {
   luminosityDistance?: number | null;
 
   // Metadata
-  latencyUs:          number;
+  /** null = never received live (archive import), so no latency exists. */
+  latencyUs:          number | null;
 }
 
 // ---------------------------------------------------------------------------

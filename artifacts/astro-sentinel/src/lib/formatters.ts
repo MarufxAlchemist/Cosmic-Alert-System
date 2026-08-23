@@ -74,10 +74,28 @@ export function formatMicrosecondDate(isoString: string) {
   }
 }
 
-export function formatLatency(microseconds: number) {
-  if (microseconds < 1000) {
-    return `${microseconds} μs`;
-  }
-  const ms = microseconds / 1000;
-  return `${ms.toFixed(2)} ms`;
+/**
+ * Format a MEASURED ingestion latency.
+ *
+ * null means the latency was never measurable — an archive import was not
+ * received live, so it has no arrival time. It must never render as "0 μs",
+ * which asserts the notice arrived at the instant of detection.
+ */
+export function formatLatency(
+  microseconds: number | string | null | undefined,
+): string {
+  // latency_us is a bigint: the REST API serialises it as a string
+  // ("2500000") while the WebSocket bridge sends a JSON number. Coerce
+  // explicitly — a bare Number.isFinite() check rejects the string form.
+  if (microseconds == null) return UNKNOWN_LABEL;
+  const us = typeof microseconds === "string" ? Number(microseconds) : microseconds;
+  if (!Number.isFinite(us)) return UNKNOWN_LABEL;
+
+  if (us < 1_000) return `${us} μs`;
+  if (us < 1_000_000) return `${(us / 1_000).toFixed(2)} ms`;
+  // Replayed historical events sit hours-to-days behind their detection time;
+  // without these tiers they rendered as e.g. "1137543329.00 ms".
+  if (us < 60 * 1_000_000) return `${(us / 1_000_000).toFixed(2)} s`;
+  if (us < 3600 * 1_000_000) return `${(us / (60 * 1_000_000)).toFixed(1)} min`;
+  return `${(us / (3600 * 1_000_000)).toFixed(1)} h`;
 }

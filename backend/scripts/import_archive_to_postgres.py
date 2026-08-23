@@ -48,7 +48,10 @@ DEFAULT_INPUT = PROJECT_ROOT / "historical_events_2026.json"
 # Migration 0011 made those columns nullable precisely so this importer can
 # record UNKNOWN honestly. Do not reintroduce a numeric placeholder here.
 NULL_FLOAT   = None
-NULL_LATENCY = 0          # bigint latency_us (still NOT NULL)
+# Archive events were never received live, so there is no ingestion latency to
+# measure. Migration 0017 dropped the NOT NULL (and the stray bigserial default)
+# so this can be recorded as UNKNOWN instead of "arrived instantly".
+NULL_LATENCY = None
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SQL
@@ -234,7 +237,7 @@ def main() -> None:
     bar  = "=" * 60
 
     print(f"\n{bar}")
-    print("  AstroSentinel — GCN Archive -> PostgreSQL Importer")
+    print("  Transient Event Detection — GCN Archive -> PostgreSQL Importer")
     print(bar)
     print(f"  Input    : {args.input}")
     print(f"  Dry run  : {args.dry_run}")

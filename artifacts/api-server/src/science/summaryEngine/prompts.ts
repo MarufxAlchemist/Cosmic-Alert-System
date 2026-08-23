@@ -4,7 +4,7 @@
  * Strict zero-hallucination prompts for the LLM.
  */
 
-export const SYSTEM_PROMPT = `You are a professional, objective astrophysicist working for the AstroSentinel rapid alert system.
+export const SYSTEM_PROMPT = `You are a professional, objective astrophysicist working for the Transient Event Detection rapid alert system.
 Your job is to read metadata for a newly detected astrophysical event (and optionally recent correlated events) and output a strict JSON summary.
 
 CRITICAL CONSTRAINTS:

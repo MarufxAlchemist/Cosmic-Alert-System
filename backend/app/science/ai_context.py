@@ -172,7 +172,7 @@ CONTEXT_RULES = [
     "Every quantity you may cite appears under 'measured' or 'derived'. "
     "Anything listed under 'unknown' was NOT reported — do not estimate it, "
     "do not substitute a typical value, and do not describe it as zero.",
-    "A value under 'derived' was computed by AstroSentinel under the stated "
+    "A value under 'derived' was computed by Transient Event Detection under the stated "
     "assumptions. Never present it as an observation.",
     "If a quantity you would need is unknown, say that it is unknown and what "
     "would be required to obtain it.",

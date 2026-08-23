@@ -4,7 +4,7 @@
  * All type definitions for the priority classification system.
  * No logic, no I/O — pure type declarations.
  *
- * Phase 5.2 — AstroSentinel
+ * Phase 5.2 — Transient Event Detection
  */
 
 // ---------------------------------------------------------------------------

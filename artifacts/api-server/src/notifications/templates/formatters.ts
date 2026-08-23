@@ -4,7 +4,7 @@
  * Pure scientific value formatters for the email template.
  * No HTML — plain string transformations only.
  *
- * Phase 5.3 — AstroSentinel
+ * Phase 5.3 — Transient Event Detection
  */
 
 // ---------------------------------------------------------------------------
@@ -179,8 +179,8 @@ export function formatT90(t90: number): string {
 // Latency
 // ---------------------------------------------------------------------------
 
-export function formatLatency(us: number): string {
-  if (!us || us <= 0) return "N/A";
+export function formatLatency(us: number | null | undefined): string {
+  if (us == null || !Number.isFinite(us) || us <= 0) return "N/A";
   if (us < 1_000)     return `${us.toFixed(0)} μs`;
   if (us < 1_000_000) return `${(us / 1_000).toFixed(1)} ms`;
   return `${(us / 1_000_000).toFixed(2)} s`;

@@ -8,7 +8,7 @@
  *   import { classify } from "../science/priorityEngine/index.js";
  *   import type { ClassificationResult, EventClassificationInput } from "../science/priorityEngine/index.js";
  *
- * Phase 5.2 — AstroSentinel
+ * Phase 5.2 — Transient Event Detection
  */
 
 export { classify }                  from "./classifier.js";

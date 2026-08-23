@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # deploy/scripts/update.sh
 # ─────────────────────────────────────────────────────────────────────────────
-# Update Cosmic Alert System to the latest version from git.
+# Update Transient Event Detection to the latest version from git.
 # Performs a rolling restart: pulls new code, rebuilds changed images,
 # restarts services one at a time to minimize downtime.
 #
@@ -20,7 +20,7 @@ NO_PULL="${1:-}"
 cd "$PROJECT_ROOT"
 
 echo "$LOG_PREFIX ═══════════════════════════════════════════════"
-echo "$LOG_PREFIX  Cosmic Alert System — Update"
+echo "$LOG_PREFIX  Transient Event Detection — Update"
 echo "$LOG_PREFIX ═══════════════════════════════════════════════"
 
 # ── Git pull ──────────────────────────────────────────────────────────────────

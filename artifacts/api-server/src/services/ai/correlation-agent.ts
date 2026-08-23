@@ -80,6 +80,15 @@ export type CorrelationAnalysisResult = z.infer<typeof CorrelationAnalysisSchema
 export class CorrelationAgent {
   constructor(private readonly provider: LLMProvider) {}
 
+  /**
+   * Identifies the model that produced an analysis, for cache provenance.
+   * Reading a vendor-specific env var at the call site would mislabel the
+   * result once LLM_PROVIDER selects a different vendor.
+   */
+  get providerName(): string {
+    return this.provider.name;
+  }
+
   async analyze(input: CorrelationAgentInput): Promise<CorrelationAnalysisResult> {
     const prompt = buildCorrelationPrompt(input);
 

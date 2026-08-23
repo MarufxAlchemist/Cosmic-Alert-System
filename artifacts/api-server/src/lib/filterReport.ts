@@ -31,6 +31,10 @@ export type RejectionCategory =
   | "heartbeat"        // periodic heartbeat — not an astrophysical event
   | "low_significance" // FAR too high, SNR too low, or other quality threshold
   | "sub_threshold"    // source explicitly flagged significant=false
+  | "not_astrophysical" // source classified the trigger as non-astrophysical
+                        // (e.g. Fermi Def_NOT_a_GRB: particle event, solar
+                        // flare or known source). Distinct from a test alert
+                        // and from a low-significance real detection.
   | "unknown_format"   // payload missing required fields
   | "topic_blocked"    // topic not in the allow-list
   | "duplicate_type";  // alert_type makes this a retraction-adjacent duplicate

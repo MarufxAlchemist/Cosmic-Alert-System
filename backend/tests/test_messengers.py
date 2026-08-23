@@ -56,6 +56,86 @@ def test_duration_class_always_carries_its_caveat():
     assert cls["provenance"] == "DERIVED"
 
 
+def test_duration_class_states_its_instrument_dependence():
+    """
+    T90 is not an intrinsic property: the same burst measures differently on a
+    different bandpass or a more sensitive detector. The class must carry that,
+    or it reads as a fact about the source rather than about the detector.
+    """
+    cls = grb.classify_duration(30.0)
+    assert "5%" in cls["definition"] and "95%" in cls["definition"]
+    assert "bandpass" in cls["instrument_dependence"]
+    assert cls["population_peak_s"] == grb.T90_LONG_PEAK_S
+    assert grb.classify_duration(0.3)["population_peak_s"] == grb.T90_SHORT_PEAK_S
+
+
+# ── Amati relation (Zhang eq. 2.54) ────────────────────────────────────────
+
+def test_amati_band_is_a_band_not_a_line():
+    """
+    C and m are quoted as ranges, so the relation predicts an interval. A
+    single predicted value would claim a precision the correlation lacks.
+    """
+    lo, hi = grb.amati_band_kev(1e52)
+    # At E_iso = 1e52 erg the (E_iso/1e52)^m factor is exactly 1, so the band
+    # collapses to the range of C, scaled by 100 keV.
+    assert (lo, hi) == (80.0, 100.0)
+    assert grb.amati_band_kev(1e54)[0] < grb.amati_band_kev(1e54)[1]
+
+
+@pytest.mark.parametrize("bad", [0, -1.0, None, float("nan")])
+def test_amati_band_rejects_unusable_energy(bad):
+    assert grb.amati_band_kev(bad) is None
+
+
+def test_amati_is_not_evaluated_on_band_limited_eiso():
+    """
+    THE point of this check. The Amati relation is defined on the BOLOMETRIC
+    E_iso; the pipeline holds only the band-limited one, and they differ by a
+    non-constant factor of ~1.5-5. Substituting it would move Ep,z along the
+    relation by an unknown amount and could invent or conceal an outlier.
+    """
+    e = base("GRB", t90=30.0, fluence=1e-5, fluenceBand="10-1000 keV",
+             epeak=300.0, redshift=1.0)
+    c = codes(e)
+    assert "grb_amati_not_evaluated" in c
+    assert "grb_amati_outlier" not in c
+    assert "grb_amati_consistent" not in c
+
+    msg = next(d.message for d in validate_event(e).diagnostics
+               if d.code == "grb_amati_not_evaluated")
+    assert "k-correction" in msg
+
+
+def test_amati_runs_only_when_a_bolometric_eiso_is_supplied():
+    e = base("GRB", t90=30.0, fluence=1e-5, fluenceBand="10-1000 keV",
+             epeak=45.0, redshift=1.0, eisoBolometric=1e52)
+    # Ep,z = 45 * (1+1) = 90 keV, inside the 80-100 keV band.
+    assert "grb_amati_consistent" in codes(e)
+
+    outlier = dict(e, epeak=300.0)      # Ep,z = 600 keV, far above the band
+    assert "grb_amati_outlier" in codes(outlier)
+
+
+def test_amati_needs_both_redshift_and_epeak():
+    """Without a redshift there is no rest-frame Ep,z, so there is no check."""
+    for over in ({"redshift": None}, {"epeak": None}):
+        kw = {"t90": 30.0, "fluence": 1e-5, "fluenceBand": "10-1000 keV",
+              "epeak": 300.0, "redshift": 1.0, **over}
+        assert not any(c.startswith("grb_amati") for c in codes(base("GRB", **kw)))
+
+
+def test_amati_outlier_is_not_reported_as_a_data_fault():
+    """GRB 980425 is a real burst far off the relation; an outlier is a
+    scientific statement, not a validation failure."""
+    e = base("GRB", t90=30.0, fluence=1e-5, fluenceBand="10-1000 keV",
+             epeak=300.0, redshift=1.0, eisoBolometric=1e52)
+    d = next(x for x in validate_event(e).diagnostics
+             if x.code == "grb_amati_outlier")
+    assert d.level.name == "INFO"
+    assert "do not by themselves indicate bad data" in d.message
+
+
 def test_short_grb_does_not_assert_a_progenitor():
     diag = validate_event(base("GRB", t90=0.5)).diagnostics
     text = " ".join(d.message for d in diag).lower()

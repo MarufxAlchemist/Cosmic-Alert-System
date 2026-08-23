@@ -5,6 +5,8 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/AuthContext";
 import { NotificationChannelCard } from "./NotificationChannelCard";
+import { WeComConfigPanel, QQUnavailableNote, type WeComConfigState } from "./WeComConfigPanel";
+import { DeliveryHistory } from "./DeliveryHistory";
 import { NotificationEventSelector } from "./NotificationEventSelector";
 import { NotificationPrioritySelector } from "./NotificationPrioritySelector";
 import { NotificationBehaviour } from "./NotificationBehaviour";
@@ -120,6 +122,49 @@ export function NotificationPreferences() {
     if (prefs) setFormData(prefs);
   }, [prefs]);
 
+  // ── WeChat / WeCom channel state ──────────────────────────────────────────
+  //
+  // DECLARED HERE, ABOVE THE EARLY RETURNS, AND IT MUST STAY HERE.
+  // The loading / error / no-data guards below return before the rest of the
+  // component body runs. A hook placed after them is skipped on those renders
+  // and executed once data arrives, so React sees a different number of hooks
+  // between renders and throws "Rendered more hooks than during the previous
+  // render". Hooks must be unconditional; only the JSX below may be.
+  //
+  // Held separately from `formData` on purpose: preferences are a form the user
+  // edits and saves as a unit, whereas a webhook credential is submitted once,
+  // encrypted server-side and never returned. Keeping it in formData would
+  // invite it being round-tripped through a PUT of the whole form, which would
+  // require the secret to live in React state — exactly what must not happen.
+  const [wecom, setWecom] = useState<WeComConfigState>({
+    health: "configuration_required",
+  });
+
+  // `formData` is null until the query resolves, hence the optional chaining:
+  // this effect runs on every render, including the ones that bail out below.
+  const selectedChannels = formData?.channels.join(",") ?? "";
+
+  useEffect(() => {
+    if (!token) return;
+    if (!selectedChannels.split(",").includes("wechat")) return;
+    void (async () => {
+      try {
+        const res = await fetch("/api/notifications/wechat", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+        const j = await res.json();
+        setWecom({
+          display: j.display ?? null,
+          health: j.health ?? "configuration_required",
+          healthDetail: j.healthDetail,
+        });
+      } catch {
+        /* leave prior state; a status read failure must not clear the UI */
+      }
+    })();
+  }, [token, selectedChannels]);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -158,6 +203,59 @@ export function NotificationPreferences() {
     }
   };
 
+  // Plain functions, not hooks — safe to define after the early returns.
+  const qqNoteVisible = formData.channels.includes("qq");
+
+  const authHeaders = (): Record<string, string> => ({
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+  });
+
+  /** Read the redacted status. The real webhook never comes back from the API. */
+  async function refreshWeComStatus(): Promise<void> {
+    try {
+      const res = await fetch("/api/notifications/wechat", { headers: authHeaders() });
+      if (!res.ok) return;
+      const j = await res.json();
+      setWecom({
+        display: j.display ?? null,
+        health: j.health ?? "configuration_required",
+        healthDetail: j.healthDetail,
+      });
+    } catch {
+      /* leave prior state; a status read failure must not clear the UI */
+    }
+  }
+
+  /** Returns a user-safe error string, or null on success. */
+  async function handleWeComSave(webhookUrl: string): Promise<string | null> {
+    const res = await fetch("/api/notifications/wechat", {
+      method: "PUT",
+      headers: authHeaders(),
+      body: JSON.stringify({ webhookUrl }),
+    });
+    const j = await res.json().catch(() => null);
+    if (!res.ok) return j?.error ?? "Could not save the webhook.";
+    await refreshWeComStatus();
+    return null;
+  }
+
+  async function handleWeComTest(): Promise<string | null> {
+    const res = await fetch("/api/notifications/wechat/test", {
+      method: "POST",
+      headers: authHeaders(),
+    });
+    const j = await res.json().catch(() => null);
+    if (!res.ok || j?.ok === false) return j?.error ?? "Test notification failed.";
+    await refreshWeComStatus();
+    return null;
+  }
+
+  async function handleWeComRemove(): Promise<void> {
+    await fetch("/api/notifications/wechat", { method: "DELETE", headers: authHeaders() });
+    setWecom({ health: "configuration_required" });
+  }
+
   return (
     <div className="space-y-8 pb-8">
       {/* 1. Research Email */}
@@ -194,24 +292,22 @@ export function NotificationPreferences() {
             onToggle={handleChannelToggle}
           />
           <NotificationChannelCard
-            id="telegram"
-            name="Telegram"
-            description="Instant mobile push alerts"
-            icon="telegram"
+            id="wechat"
+            name="WeChat"
+            description="Real-time research alerts"
+            icon="wechat"
             enabled={true}
-            comingSoon={true}
-            selected={formData.channels.includes("telegram")}
+            selected={formData.channels.includes("wechat")}
             onToggle={handleChannelToggle}
           />
           <NotificationChannelCard
-            id="discord"
-            name="Discord"
-            description="Post to a Discord channel"
-            icon="discord"
-            enabled={true}
+            id="qq"
+            name="QQ"
+            description="QQ group or channel bot"
+            icon="qq"
+            enabled={false}
             comingSoon={true}
-            selected={formData.channels.includes("discord")}
-            onToggle={handleChannelToggle}
+            selected={false}
           />
           <NotificationChannelCard
             id="webhook"
@@ -224,7 +320,26 @@ export function NotificationPreferences() {
             onToggle={handleChannelToggle}
           />
         </div>
+
+        {/*
+          The configuration surfaces only once the channel is selected, so the
+          panel is not shown to someone who has not opted in. WeChat needs a
+          credential; there is no login flow that can grant push access.
+        */}
+        {formData.channels.includes("wechat") && (
+          <WeComConfigPanel
+            state={wecom}
+            onSave={handleWeComSave}
+            onTest={handleWeComTest}
+            onRemove={handleWeComRemove}
+          />
+        )}
+        {qqNoteVisible && <QQUnavailableNote />}
       </section>
+
+      {/* Delivery history — makes a silent failure visible to the person
+          it affects, rather than only in a server log they cannot read. */}
+      <DeliveryHistory token={token} />
 
       {/* 3. Event Types */}
       <section className="space-y-4">

@@ -14,7 +14,7 @@
  *   • MSO conditional comments where required for VML backgrounds.
  *   • No CSS gradients, no border-radius on table cells (Outlook ignores).
  *
- * Phase 5.3 — AstroSentinel
+ * Phase 5.3 — Transient Event Detection
  */
 
 import type { PriorityColors, EventTypeMeta } from "./styles.js";
@@ -274,7 +274,7 @@ export function footerBlock(opts: FooterOptions): string {
       <tr>
         <td>
           <p class="footer-text" style="margin:0 0 4px 0;font-size:12px;color:#94a3b8;line-height:1.5;">
-            This alert was generated automatically by <strong style="color:#64748b;">AstroSentinel</strong>
+            This alert was generated automatically by <strong style="color:#64748b;">Transient Event Detection</strong>
             after passing scientific quality filters and priority classification.
           </p>
           <p class="footer-text" style="margin:0 0 4px 0;font-size:11px;color:#94a3b8;">

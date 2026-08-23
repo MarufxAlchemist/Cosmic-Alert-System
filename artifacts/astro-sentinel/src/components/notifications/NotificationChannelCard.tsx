@@ -1,11 +1,21 @@
-import { Check, Mail, MessageSquare, Webhook, MonitorSmartphone, X } from "lucide-react";
+import { Check, Mail, MessageCircle, MessagesSquare, Webhook, MonitorSmartphone } from "lucide-react";
 
 interface NotificationChannelCardProps {
   id: string;
   name: string;
   description: string;
-  icon: "mail" | "telegram" | "discord" | "slack" | "teams" | "webhook";
+  /**
+   * `telegram` and `discord` are deliberately absent: those cards were
+   * placeholders with no backend, and the union is the place to stop them
+   * being re-added by habit. A channel earns an icon when it can deliver.
+   */
+  icon: "mail" | "wechat" | "qq" | "teams" | "webhook";
   enabled: boolean;
+  /**
+   * Renders the card as unavailable. Prefer stating WHY next to the card —
+   * an unexplained "Coming Soon" on a channel that cannot work is the same
+   * problem as a fake integration.
+   */
   comingSoon?: boolean;
   selected?: boolean;
   onToggle?: (id: string, selected: boolean) => void;
@@ -13,9 +23,10 @@ interface NotificationChannelCardProps {
 
 const icons = {
   mail: Mail,
-  telegram: MessageSquare,
-  discord: MessageSquare,
-  slack: MessageSquare,
+  // Distinct glyphs: WeChat and QQ are different services and must not share
+  // an icon, and neither may reuse the Telegram/Discord marks they replace.
+  wechat: MessageCircle,
+  qq: MessagesSquare,
   teams: MonitorSmartphone,
   webhook: Webhook,
 };

@@ -1,4 +1,4 @@
-# AstroSentinel — Cosmic Alert System
+# Transient Event Detection
 
 A multi-tier application that ingests, analyzes, and serves astronomical alerts (GCN notices) in real-time.
 

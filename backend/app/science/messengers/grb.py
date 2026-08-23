@@ -27,9 +27,15 @@ from app.science import cosmology
 from app.science.diagnostics import ValidationReport
 from app.science.uncertainty import Measurement
 
-#: Conventional T90 split (Kouveliotou et al. 1993, BATSE 50-300 keV).
+#: Conventional T90 split (Kouveliotou et al. 1993, BATSE 25-350 keV).
 #: Instrument-dependent — recorded alongside any classification.
+#: Band per Zhang, "The Physics of Gamma-Ray Bursts", section 2.1.2.
 T90_SHORT_MAX_S = 2.0
+
+#: Where each population actually peaks (Zhang section 2.1.2). Quoted in the
+#: caveat so "short" is never read as "0 s" or "long" as "unbounded".
+T90_SHORT_PEAK_S = (0.2, 0.3)
+T90_LONG_PEAK_S = (20.0, 30.0)
 
 #: T90 longer than this is extremely unusual and worth a human look.
 T90_IMPLAUSIBLE_S = 10_000.0
@@ -59,17 +65,128 @@ def classify_duration(t90: float) -> dict[str, Any]:
     determination, so no consumer can quote the label without the caveat.
     """
     is_short = t90 < T90_SHORT_MAX_S
+    peak = T90_SHORT_PEAK_S if is_short else T90_LONG_PEAK_S
     return {
         "class": "short" if is_short else "long",
         "threshold_s": T90_SHORT_MAX_S,
-        "convention": "Kouveliotou et al. 1993 (BATSE 50-300 keV)",
+        "convention": "Kouveliotou et al. 1993 (BATSE 25-350 keV)",
+        "definition": (
+            "T90 is the interval between the epochs at which 5% and 95% of the "
+            "total fluence has been collected."
+        ),
+        "population_peak_s": peak,
         "caveat": (
             "Duration classes are statistical and detector-dependent; the "
             "short and long populations overlap substantially. This is NOT a "
             "determination of progenitor type."
         ),
+        # Each of these changes the measured T90 for the SAME burst, which is
+        # why the class must never be treated as an intrinsic property.
+        "instrument_dependence": (
+            "T90 depends on the detector's energy bandpass (pulses are wider at "
+            "lower energies, giving a longer T90) and on its sensitivity (a more "
+            "sensitive detector recovers more of the burst above background). "
+            "The observed short-to-long ratio is about 1:3 for BATSE but 1:9 for "
+            "Swift. Where a burst has widely separated emission episodes, T90 "
+            "spans the quiescent gap and overstates the central engine activity."
+        ),
         "provenance": "DERIVED",
     }
+
+
+#: Amati relation (Amati et al. 2002; Amati 2006), as given by Zhang eq. (2.54):
+#:
+#:     Ep,z / 100 keV = C * (E_iso / 1e52 erg)^m
+#:
+#: C and m are RANGES in the source, not fitted constants, so the relation
+#: defines a band rather than a line. Treating either as a point value would
+#: manufacture a precision the correlation does not have.
+AMATI_C_RANGE = (0.8, 1.0)
+AMATI_M_RANGE = (0.4, 0.6)
+
+AMATI_CAVEAT = (
+    "The Amati relation has broad intrinsic scatter and significant outliers "
+    "(GRB 980425 is far harder than it predicts). Several authors argue it is "
+    "at least partly an observational selection effect. It holds for LONG GRBs "
+    "with known redshift: short GRBs form a separate track and are "
+    "systematically less energetic at the same Ep,z. It is a population trend, "
+    "never a per-burst prediction."
+)
+
+
+def amati_band_kev(eiso_bolometric_erg: float) -> tuple[float, float] | None:
+    """
+    Ep,z band predicted by the Amati relation for a bolometric E_iso.
+
+    Returns (low, high) in keV spanned by the quoted ranges of C and m, or
+    None if the input is unusable. The width of the band IS the result: this
+    correlation does not support a single predicted value.
+    """
+    e = _num(eiso_bolometric_erg)
+    if e is None or e <= 0:
+        return None
+    x = e / 1e52
+    vals = [c * (x ** m) * 100.0 for c in AMATI_C_RANGE for m in AMATI_M_RANGE]
+    return min(vals), max(vals)
+
+
+def _amati_check(ev: dict[str, Any], rep: ValidationReport,
+                 epeak: float | None, z: float | None,
+                 fluence: float | None) -> None:
+    """
+    Evaluate the Amati relation, or state precisely why it cannot be.
+
+    The relation is defined on the BOLOMETRIC isotropic energy — the 1-10^4 keV
+    rest-frame quantity of Zhang eq. (2.48), which carries the k-correction
+    factor k of eq. (2.45). This pipeline computes only the BAND-LIMITED
+    isotropic energy, because k requires a fitted photon spectrum N(E) that no
+    alert payload contains. The two differ by a factor of roughly 1.5-5 that is
+    not a constant.
+
+    Substituting the band-limited value would therefore shift Ep,z along the
+    relation by an unknown amount and could turn a normal burst into an
+    apparent outlier, or hide a real one. So it is never substituted: the check
+    runs only on a bolometric E_iso supplied from outside, and otherwise
+    reports what is missing.
+    """
+    if epeak is None or epeak <= 0 or z is None or z < 0:
+        return
+
+    ep_z = epeak * (1.0 + z)
+    eiso_bol = _num(ev.get("eisoBolometric"))
+
+    if eiso_bol is None or eiso_bol <= 0:
+        if fluence is not None and fluence > 0:
+            rep.info(
+                "grb_amati_not_evaluated",
+                f"The Amati relation is not evaluated. It is defined on the "
+                f"bolometric isotropic energy (rest-frame 1-10^4 keV), which "
+                f"requires a k-correction from a fitted spectral model this "
+                f"payload does not carry; only a band-limited E_iso is "
+                f"available and the two differ by a non-constant factor of "
+                f"roughly 1.5-5. Rest-frame Ep,z = {ep_z:.4g} keV is reported "
+                f"on its own. {AMATI_CAVEAT}",
+                "epeak", ep_z,
+            )
+        return
+
+    band = amati_band_kev(eiso_bol)
+    if band is None:
+        return
+    lo, hi = band
+    inside = lo <= ep_z <= hi
+    rep.info(
+        "grb_amati_consistent" if inside else "grb_amati_outlier",
+        f"Rest-frame Ep,z = {ep_z:.4g} keV "
+        f"{'lies within' if inside else 'lies OUTSIDE'} the Amati band "
+        f"{lo:.4g}-{hi:.4g} keV predicted for E_iso = {eiso_bol:.3e} erg "
+        f"(Ep,z/100 keV = C (E_iso/1e52 erg)^m, "
+        f"C = {AMATI_C_RANGE[0]}-{AMATI_C_RANGE[1]}, "
+        f"m = {AMATI_M_RANGE[0]}-{AMATI_M_RANGE[1]}). "
+        f"{'Consistency is expected and is not evidence of anything in itself.' if inside else 'Outliers are known and do not by themselves indicate bad data.'} "
+        f"{AMATI_CAVEAT}",
+        "epeak", ep_z,
+    )
 
 
 def validate(ev: dict[str, Any], rep: ValidationReport) -> None:
@@ -191,6 +308,7 @@ def validate(ev: dict[str, Any], rep: ValidationReport) -> None:
                         f"(H0 = {st.H0} km/s/Mpc, Om0 = {st.Om0}). {caveat}",
                         "fluence", e.value,
                     )
+                    _amati_check(ev, rep, epeak, z, fluence)
                     rep.info(
                         "grb_eiso_not_bolometric",
                         "The bolometric E_iso quoted in GRB catalogues is NOT "

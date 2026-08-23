@@ -146,7 +146,14 @@ export const events = coreSchema.table("events", {
   /** 0-100 research interest, denormalised for sorting. */
   interestScore: smallint("interest_score"),
   // System fields
-  latencyUs: bigserial("latency_us", { mode: "bigint" }).notNull(),
+  /**
+   * MEASURED ingestion latency (microseconds from detectionTime to receipt).
+   * NULL = not measurable — e.g. archive imports, which were never received
+   * live. Declared `bigint`, NOT `bigserial`: this is a measurement, and a
+   * serial would hand any INSERT that omits it an auto-incrementing counter
+   * (1, 2, 3 …) to display as a latency. See migration 0017.
+   */
+  latencyUs: bigint("latency_us", { mode: "bigint" }),
   sourceCatalogId: text("source_catalog_id"),
   gcnUrl: text("gcn_url"),
   status: text("status").notNull().default("preliminary"),

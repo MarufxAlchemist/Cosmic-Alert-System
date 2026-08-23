@@ -30,7 +30,11 @@ export function Navbar({
         <div className="bg-primary/15 p-1 rounded border border-primary/30">
           <Telescope className="w-4 h-4 text-primary" />
         </div>
-        <span className="text-sm tracking-tight font-bold bg-[transparent] text-[#dee6ed]">Transmit Event Detection</span>
+        {/* text-foreground, not a hardcoded hex. --navbar-bg is dark navy in
+            dark mode but light beige (38 35% 89%) in light mode, so the
+            previous text-[#dee6ed] rendered near-white on near-white and the
+            product name vanished entirely in light mode. */}
+        <span className="text-sm tracking-tight font-bold text-foreground">Transient Event Detection</span>
       </div>
       {/* Icon actions */}
       <div className="flex items-center gap-1 text-muted-foreground mr-4">

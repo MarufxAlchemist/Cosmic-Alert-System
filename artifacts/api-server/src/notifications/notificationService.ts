@@ -28,7 +28,7 @@
  *
  * Extensibility
  * ─────────────
- *   Future channels (Telegram, Slack, Webhooks) add their own dispatch
+ *   Future channels (WeChat/WeCom, QQ, Webhooks) add their own dispatch
  *   call here without touching kafkaConsumer.ts or the email stack.
  *
  * Error handling
@@ -50,6 +50,7 @@ import { buildEmailContent }      from "./notificationTemplates.js";
 import { createEmailProvider }    from "./emailService.js";
 import { enqueueNotificationJob } from "./notificationQueue.js";
 import { decide, recordDecision } from "./deduplicationEngine/index.js";
+import { enqueueDeliveries, processDueDeliveries, toPriority } from "./notificationDispatcher.js";
 import { db, eventsTable, alertSubscriptions } from "@workspace/db";
 import { gte, eq } from "drizzle-orm";
 
@@ -306,6 +307,33 @@ export async function dispatchForEvent(
       `[notifications] Deduplication engine approved email`,
     );
 
+    // ── 5b. Provider channels (WeChat, …) ─────────────────────────────────
+    //
+    // Placed AFTER the deduplication gate so every channel inherits the same
+    // suppression decision: a revision judged insignificant must not reach a
+    // WeChat group just because it was blocked from email.
+    //
+    // Fire-and-forget and non-throwing. The email path below must not be
+    // delayed by a WeCom round-trip, and a provider outage must not prevent
+    // the email that would otherwise have gone out.
+    void enqueueDeliveries(
+      {
+        eventId:       String(event["eventId"] ?? ""),
+        eventType:     String(event["eventType"] ?? ""),
+        observatory:   String(event["observatory"] ?? ""),
+        lifecycle:     String(event["lifecycle"] ?? "preliminary").toLowerCase(),
+        revisionCount: Number(event["revisionCount"] ?? 0),
+        isRetraction:  Boolean(event["isRetraction"] ?? false),
+        raw:           event,
+      },
+      toPriority(result.priority),
+    ).then((n) => {
+      if (n > 0) void processDueDeliveries();
+    }).catch((err) =>
+      logger.error({ err, eventId: event["eventId"] },
+        "[notifications] provider-channel dispatch threw"),
+    );
+
     // ── 5c. AI Scientific Summary Engine (Phase 5.6, guarded in Phase 7) ──
     //
     // The context is built by the science layer from measured values only,
@@ -414,7 +442,7 @@ export async function dispatchForEvent(
           t90:                event["t90"]                != null ? Number(event["t90"])                : null,
           chirpMass:          event["chirpMass"]          != null ? Number(event["chirpMass"])          : null,
           luminosityDistance: event["luminosityDistance"] != null ? Number(event["luminosityDistance"]) : null,
-          latencyUs:          Number(event["latencyUs"]          ?? 0),
+          latencyUs:          event["latencyUs"]          != null ? Number(event["latencyUs"])          : null,
         },
         notificationPriority,
       );

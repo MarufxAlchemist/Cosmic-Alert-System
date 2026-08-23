@@ -12,7 +12,7 @@ from typing import Any
 
 from fastapi import WebSocket
 
-from app.gcn.topics import TOPICS
+from app.gcn.topics import ALL_TOPICS
 
 SCHEMA_VERSION  = "1"
 HEARTBEAT_INTERVAL_S = 30
@@ -124,7 +124,11 @@ class ConnectionManager:
             "sent_at":            _now_iso(),
             "session_id":         str(uuid.uuid4()),
             "server_time":        _now_iso(),
-            "subscribed_topics":  TOPICS,
+            # ALL_TOPICS, not TOPICS: the ack must report what the consumer is
+            # actually subscribed to. Reporting only the notice topics would
+            # tell a client that circulars are not being consumed while they
+            # were arriving on the very same socket.
+            "subscribed_topics":  ALL_TOPICS,
             "buffer_size":        BUFFER_CAPACITY,
             "heartbeat_interval": HEARTBEAT_INTERVAL_S,
             "deprecated":         False,

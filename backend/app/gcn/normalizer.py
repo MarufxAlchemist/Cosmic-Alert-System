@@ -32,6 +32,7 @@ try:
 except ImportError:  # pragma: no cover
     _ASTROPY_AVAILABLE = False
 
+from app.gcn import voevent
 from app.gcn.topics import get_topic_meta
 
 # ---------------------------------------------------------------------------
@@ -52,7 +53,12 @@ def normalize(topic: str, raw: dict[str, Any]) -> dict[str, Any]:
         "gcn.notices.swift.bat.guano":            _swift_bat,
     }
 
-    parser = parsers.get(topic, _generic)
+    # VOEvent XML streams (Fermi GBM, SVOM) share one parser but need the
+    # topic to resolve identity prefix and lifecycle stage.
+    if raw.get("_voevent_doc"):
+        parser = lambda r, et: _voevent_grb(r, et, topic)  # noqa: E731
+    else:
+        parser = parsers.get(topic, _generic)
     meta   = get_topic_meta(topic)
 
     base = {
@@ -80,7 +86,7 @@ def normalize(topic: str, raw: dict[str, Any]) -> dict[str, Any]:
         "area90Deg2":    None,
         "snr":           None,
         "far":           None,
-        "latencyUs":     0,
+        "latencyUs":     None,
         "galLon":        None,
         "galLat":        None,
         "sunDistance":   None,
@@ -206,6 +212,114 @@ def _measured(val: Any) -> float | None:
     if math.isnan(f) or math.isinf(f):
         return None
     return f
+
+
+def _first_scalar(*candidates: Any) -> str | None:
+    """
+    First usable scalar, unwrapping one level of list.
+
+    The GCN v4 core schemas declare `id` and `event_name` as ARRAYS. Formatting
+    one straight into a string produced identifiers like "EP['11916655551']".
+    """
+    for c in candidates:
+        if c is None:
+            continue
+        if isinstance(c, (list, tuple)):
+            c = next((x for x in c if x is not None and x != ""), None)
+            if c is None:
+                continue
+        s = str(c).strip()
+        if s:
+            return s
+    return None
+
+
+def _ellipse_major(val: Any) -> float | None:
+    """
+    Localization radius in the source's units, from a scalar or an ellipse.
+
+    GCN v4 allows `ra_dec_error` to be either a circle radius or an array of
+    up to three values, ORDERED: [semi-major, semi-minor, position-angle].
+
+    The semi-major axis is element 0 — it is emphatically NOT max(). The third
+    element is an ANGLE ON THE SKY measured North through East, not a length:
+    for [0.08, 0.04, 30] the maximum is the 30 deg position angle, which would
+    be stored as a 1800 arcmin localization instead of 4.8 arcmin, inflating
+    the search region by 375x. Position is by order, never by magnitude.
+    """
+    if isinstance(val, (list, tuple)):
+        for v in val[:1]:
+            return _positive_measured(v)
+        return None
+    return _positive_measured(val)
+
+
+def _containment_key(prob: Any) -> str | None:
+    """
+    Map a containment probability onto a CONTAINMENT_CONVENTIONS key.
+
+    Only exact, recognised fractions are mapped. An unrecognised probability
+    returns None — reported as unstated rather than snapped to the nearest
+    convention, because a radius compared under the wrong containment is
+    rescaled by up to 2.15x.
+    """
+    p = _measured(prob)
+    if p is None:
+        # Schema default for the GCN v4 notice family.
+        p = 0.9
+    return {0.5: "50_2D", 0.68: "68_2D", 0.6827: "68_2D",
+            0.9: "90_2D", 0.95: "95_2D"}.get(round(p, 4))
+
+
+def _alias(raw: dict, *keys: str) -> Any:
+    """
+    First present, non-empty value among several candidate key spellings.
+
+    GCN payloads name the same quantity differently across schemas and schema
+    versions (ra_obj/ra, err_rad/loc_error, width_ms/width). The existing
+    parsers already handle this with nested raw.get() defaults; this makes the
+    pattern readable when there are more than two candidates.
+
+    NOTE ON THE ALIAS LISTS BELOW
+    ─────────────────────────────
+    They are best-effort and deliberately generous. A key that never appears in
+    a real payload simply never matches and the field stays UNKNOWN — the cost
+    of a wrong guess is zero, whereas a field that IS present and unlisted is
+    silently discarded, which is what this change exists to stop. The lists
+    should still be confirmed against live traffic per topic.
+    """
+    for k in keys:
+        if k in raw:
+            v = raw[k]
+            if v is not None and v != "":
+                return v
+    return None
+
+
+def _measured_alias(raw: dict, *keys: str) -> float | None:
+    """_measured() over a list of candidate keys."""
+    return _measured(_alias(raw, *keys))
+
+
+def _positive_alias(raw: dict, *keys: str) -> float | None:
+    """_positive_measured() over a list of candidate keys."""
+    return _positive_measured(_alias(raw, *keys))
+
+
+def _text_alias(raw: dict, *keys: str) -> str | None:
+    """
+    Non-empty string over a list of candidate keys.
+
+    Used for qualifiers that are NOT numbers and must never be coerced into
+    one — the fluence energy band, the neutrino energy unit, the event
+    topology. A missing qualifier stays None so the science layer can refuse
+    to derive rather than assume a default.
+    """
+    v = _alias(raw, *keys)
+    if v is None:
+        return None
+    s = str(v).strip()
+    return s or None
 
 
 def _positive_measured(val: Any) -> float | None:
@@ -341,19 +455,151 @@ def _sun_moon_distance(
         return None, None
 
 
-def _latency_us(detection_time_iso: str) -> int:
-    """Microseconds from detection_time to now."""
+def _latency_us(detection_time_iso: str) -> int | None:
+    """
+    Microseconds from detection_time to now.
+
+    Returns None when the detection time cannot be parsed: without it there is
+    no latency to report, and 0 would claim the notice arrived at the instant
+    of detection. Absence is never zero.
+    """
     try:
         dt = datetime.fromisoformat(detection_time_iso.replace("Z", "+00:00"))
         now = datetime.now(timezone.utc)
         return max(0, int((now - dt).total_seconds() * 1_000_000))
     except Exception:
-        return 0
+        return None
 
 
 # ---------------------------------------------------------------------------
 # Per-topic parsers
 # ---------------------------------------------------------------------------
+
+#: Fermi GBM lifecycle: the same trigger is re-issued as its position is
+#: refined. Mapped onto the existing lifecycle vocabulary so the revision
+#: machinery treats later notices as updates to the same event.
+_GBM_LIFECYCLE = {
+    "gcn.classic.voevent.FERMI_GBM_ALERT":   "preliminary",
+    "gcn.classic.voevent.FERMI_GBM_FLT_POS": "preliminary",
+    "gcn.classic.voevent.FERMI_GBM_GND_POS": "update",
+    "gcn.classic.voevent.FERMI_GBM_FIN_POS": "confirmed",
+}
+
+
+def _voevent_grb(raw: dict, event_type: str, topic: str = "") -> dict:
+    """
+    Parser for the VOEvent XML GRB streams (Fermi GBM, SVOM).
+
+    voevent.parse() has already flattened the document; this maps it onto the
+    normalized event shape.
+
+    UNIT CONVERSION — the reason this is not a one-liner
+    ───────────────────────────────────────────────────
+    VOEvent reports Error2Radius in the unit declared on Position2D, which is
+    DEGREES in every GCN stream observed. `errorRadius` is ARCMIN everywhere
+    in this codebase (see derivations.py, which divides by 60 to get degrees).
+    A Fermi flight position of 27.97 deg stored unconverted would claim a
+    27.97 arcmin localization — 60x better than the notice reported, and well
+    inside the range where the UI would present it as a followable position.
+    """
+    doc = raw.get("_voevent_doc") or {}
+    params = doc.get("params") or {}
+
+    ra = _measured(doc.get("ra"))
+    dec = _measured(doc.get("dec"))
+    det_time = doc.get("iso_time") or _now_iso()
+    if det_time and not det_time.endswith("Z") and "+" not in det_time:
+        det_time = det_time + "Z"
+
+    # deg -> arcmin. Only when the source actually declared degrees; an
+    # unexpected unit is refused rather than converted by assumption.
+    err_deg = _positive_measured(doc.get("error_radius"))
+    unit = (doc.get("position_unit") or "deg").lower()
+    if err_deg is not None and unit in ("deg", "degree", "degrees"):
+        err_arcmin = err_deg * 60.0
+    else:
+        err_arcmin = None
+
+    gal_lon, gal_lat = _ra_dec_to_gal(ra, dec)
+    sun_d, moon_d = _sun_moon_distance(ra, dec, det_time)
+
+    # Identity: TrigID is the stable per-burst key across ALERT/FLT/GND/FIN,
+    # so all four notices for one burst collapse onto a single event and are
+    # recorded as revisions rather than four separate bursts.
+    trig = params.get("TrigID") or params.get("Trigger_ID") or ""
+    trig = str(trig).strip()
+    if trig in ("", "0x00000000"):
+        trig = ""
+    prefix = "SVOM" if "svom" in topic else "GRB"
+    event_id = f"{prefix}{trig}" if trig else (
+        voevent.ivorn_tail(doc.get("ivorn", "")) or _make_event_id(event_type))
+
+    return {
+        "eventId":       event_id,
+        "detectionTime": det_time,
+        "ra":            ra,
+        "dec":           dec,
+        "errorRadius":   err_arcmin,
+        # Fermi states the flight/ground significance in sigma (ucd=stat.snr).
+        "snr":           _positive_measured(params.get("Data_Signif")),
+        "far":           None,
+        "latencyUs":     _latency_us(det_time),
+        "galLon":        gal_lon,
+        "galLat":        gal_lat,
+        "sunDistance":   sun_d,
+        "moonDistance":  moon_d,
+        "fluence":       None,
+        "dm":            None,
+        "lifecycle":     _GBM_LIFECYCLE.get(topic),
+        # Trig_Timescale is the trigger integration window, NOT T90. Mapping it
+        # to t90 would report the detector's timescale as the burst duration.
+        **_grb_spectral_fields(params),
+    }
+
+
+def _grb_spectral_fields(raw: dict) -> dict:
+    """
+    Temporal and spectral quantities the GRB rules consume, plus their errors.
+
+    Shared by every GRB-producing parser so the alias lists exist once.
+
+    WHAT THIS DOES NOT DO
+    ─────────────────────
+    It does not supply `fluenceBand` from the instrument's nominal bandpass.
+    Stamping "15-150 keV" onto a Swift fluence because Swift-BAT nominally
+    covers that range would be an assumption of exactly the kind the
+    containment-convention rules exist to prevent: the band is only known if
+    the notice states it, and a fluence integrated over a different interval
+    would silently produce a wrong E_iso. Unstated stays UNKNOWN, and
+    grb.validate() then declines to derive the isotropic energy and says why.
+
+    Nor does it supply `eisoBolometric`. That needs a k-correction from a
+    fitted spectral model (Zhang eq. 2.45); no notice carries one.
+    """
+    return {
+        # T90 > 0 by definition — a non-positive duration is not a measurement.
+        "t90":            _positive_alias(raw, "t90", "T90", "duration",
+                                          "burst_duration"),
+        "t90Error":       _positive_alias(raw, "t90_error", "t90_err",
+                                          "duration_error"),
+        # Observed peak energy of the nu-F-nu spectrum (keV).
+        "epeak":          _positive_alias(raw, "epeak", "e_peak", "ep",
+                                          "peak_energy", "epeak_kev"),
+        "epeakError":     _positive_alias(raw, "epeak_error", "epeak_err",
+                                          "peak_energy_error"),
+        "fluenceError":   _positive_alias(raw, "fluence_error", "fluence_err"),
+        # The energy interval the fluence was integrated over, as a string.
+        # Never inferred — see the docstring above.
+        "fluenceBand":    _text_alias(raw, "fluence_band", "energy_band",
+                                      "fluence_energy_range", "energy_range"),
+        # Redshift is almost never in a real-time notice; it arrives later by
+        # circular. Positive-only: a literal 0 here would be a placeholder, and
+        # z = 0 derives a zero luminosity distance and an E_iso of zero.
+        "redshift":       _positive_alias(raw, "redshift", "z", "host_redshift"),
+        "redshiftError":  _positive_alias(raw, "redshift_error", "redshift_err",
+                                          "z_error"),
+    }
+
 
 def _chime_frb(raw: dict, event_type: str) -> dict:
     """
@@ -381,6 +627,26 @@ def _chime_frb(raw: dict, event_type: str) -> dict:
         "moonDistance":  moon_d,
         "dm":            _measured(raw.get("dm")),
         "fluence":       None,
+        # ── Burst properties the FRB rules already validate ─────────────────
+        # frb.validate() has had range checks for pulse width, observing
+        # frequency and the DM decomposition since Phase 4, but the parser
+        # never populated them, so every check was dead code. width_ms is
+        # named in this parser's own docstring as a key field of the schema.
+        "widthMs":       _positive_alias(raw, "width_ms", "width", "boxcar_width_ms",
+                                         "pulse_width_ms"),
+        "frequencyMhz":  _positive_alias(raw, "centre_frequency", "center_frequency",
+                                         "frequency_mhz", "freq_mhz", "central_freq"),
+        "scatteringMs":  _positive_alias(raw, "scattering_time", "scattering_ms",
+                                         "scatter_time_ms"),
+        "dmError":       _positive_alias(raw, "dm_error", "dm_err", "dm_uncertainty"),
+        # Galactic DM foreground. Reported by the source or not at all: the
+        # extragalactic excess is only meaningful if this came from an
+        # electron-density model the notice names, never one assumed here.
+        "dmGalactic":    _positive_alias(raw, "dm_gal", "dm_mw", "galactic_dm",
+                                         "dm_galactic"),
+        "dmGalacticError": _positive_alias(raw, "dm_gal_error", "dm_mw_error",
+                                           "dm_galactic_error"),
+        "isRepeater":    _alias(raw, "is_repeater", "repeater", "known_repeater"),
     }
 
 
@@ -394,14 +660,34 @@ def _einstein_probe(raw: dict, event_type: str) -> dict:
     det_time = raw.get("trigger_time") or raw.get("t_start") or _now_iso()
     gal_lon, gal_lat = _ra_dec_to_gal(ra, dec)
     sun_d, moon_d    = _sun_moon_distance(ra, dec, det_time)
-    trigger  = raw.get("trigger_id") or raw.get("id") or ""
+
+    # `id` and `event_name` are ARRAYS in the GCN v4 core Event schema.
+    # Interpolating the list produced event IDs like "EP['11916655551']".
+    trigger = _first_scalar(raw.get("trigger_id"), raw.get("id"),
+                            raw.get("event_name"))
+
+    # The GCN v4 core Localization schema names this `ra_dec_error`, in DEGREES,
+    # and it may be a scalar radius OR an array describing an ellipse
+    # (semi-major, semi-minor, position angle). The parser previously looked
+    # only for `err_rad`/`loc_error`, neither of which exists in this schema,
+    # so EVERY Einstein Probe localization was silently discarded.
+    # errorRadius is arcmin here, hence the x60.
+    err_deg = _ellipse_major(raw.get("ra_dec_error", raw.get("err_rad")))
+    err_arcmin = err_deg * 60.0 if err_deg is not None else None
 
     return {
         "eventId":       f"EP{trigger}" if trigger else _make_event_id("GRB"),
         "detectionTime": det_time,
         "ra":            ra,
         "dec":           dec,
-        "errorRadius":   _positive_measured(raw.get("err_rad", raw.get("loc_error"))),
+        "errorRadius":   err_arcmin,
+        # Schema: "Containment probability [dimensionless, 0-1]; if absent,
+        # default is 0.9". The default is the PRODUCER's documented convention,
+        # not an assumption made here, so it is recorded rather than dropped —
+        # otherwise a genuinely-90% radius is treated as unstated and every
+        # radius comparison downstream refuses to run.
+        "errorRadiusContainment": _containment_key(
+            raw.get("containment_probability")),
         "snr":           _positive_measured(raw.get("image_snr", raw.get("snr"))),
         "far":           _positive_measured(raw.get("far")),
         "latencyUs":     _latency_us(det_time),
@@ -411,6 +697,7 @@ def _einstein_probe(raw: dict, event_type: str) -> dict:
         "moonDistance":  moon_d,
         "fluence":       _measured(raw.get("fluence")),
         "dm":            None,
+        **_grb_spectral_fields(raw),
     }
 
 
@@ -458,6 +745,16 @@ def _icecube(raw: dict, event_type: str) -> dict:
         "moonDistance":  moon_d,
         "fluence":       None,
         "dm":            None,
+        # ── Neutrino energy and topology ────────────────────────────────────
+        # The unit is carried as a STRING alongside the number and is never
+        # assumed: neutrino.py refuses to convert an energy whose unit it was
+        # not told (GeV/TeV/PeV differ by three orders of magnitude each).
+        "energy":        _positive_alias(raw, "energy", "reco_energy",
+                                         "neutrino_energy", "energy_gev"),
+        "energyUnit":    _text_alias(raw, "energy_unit", "energyUnits",
+                                     "energy_units"),
+        "eventTopology": _text_alias(raw, "event_topology", "topology",
+                                     "event_type_topology"),
     }
 
 
@@ -538,6 +835,27 @@ def _igwn(raw: dict, event_type: str) -> dict:
         "fluence":       None,
         "dm":            None,
         "fitsUrl":       fits_url,
+        # ── Binary parameters the GW rules consume ──────────────────────────
+        # Usually NOT in the JSON alert: LVK carries distance in the skymap
+        # FITS header (DISTMEAN/DISTSTD) and masses in the parameter-estimation
+        # products, both downstream of this notice. Extracted opportunistically
+        # so that a payload which does carry them is not discarded; absent
+        # stays UNKNOWN and gw.py declines the derivations that need them.
+        "chirpMass":     _positive_alias(
+            event_block, "chirp_mass", "mchirp", "chirp_mass_source") or
+            _positive_alias(raw, "chirp_mass", "mchirp"),
+        "mass1":         _positive_alias(event_block, "mass1", "mass_1") or
+                         _positive_alias(raw, "mass1", "mass_1"),
+        "mass2":         _positive_alias(event_block, "mass2", "mass_2") or
+                         _positive_alias(raw, "mass2", "mass_2"),
+        "mass1Error":    _positive_alias(event_block, "mass1_error", "mass_1_error"),
+        "mass2Error":    _positive_alias(event_block, "mass2_error", "mass_2_error"),
+        "luminosityDistance": _positive_alias(
+            event_block, "luminosity_distance", "distance", "distmean") or
+            _positive_alias(raw, "luminosity_distance", "distance", "distmean"),
+        "luminosityDistanceError": _positive_alias(
+            event_block, "luminosity_distance_error", "distance_error", "diststd") or
+            _positive_alias(raw, "luminosity_distance_error", "diststd"),
     }
 
 
@@ -569,6 +887,7 @@ def _swift_bat(raw: dict, event_type: str) -> dict:
         "moonDistance":  moon_d,
         "fluence":       _measured(raw.get("fluence")),
         "dm":            None,
+        **_grb_spectral_fields(raw),
     }
 
 
@@ -593,6 +912,9 @@ def _generic(raw: dict, event_type: str) -> dict:
         "galLat":        gal_lat,
         "sunDistance":   sun_d,
         "moonDistance":  moon_d,
-        "fluence":       None,
-        "dm":            None,
+        # The fallback parser previously discarded fluence outright, so any
+        # unrecognised GRB topic lost it even when the payload carried one.
+        "fluence":       _measured_alias(raw, "fluence", "burst_fluence"),
+        "dm":            _measured_alias(raw, "dm", "dispersion_measure"),
+        **_grb_spectral_fields(raw),
     }

@@ -1,4 +1,4 @@
-# CURRENT_STATE.md — AstroSentinel
+# CURRENT_STATE.md — Transient Event Detection
 
 > Last updated: 2026-08-16
 
@@ -38,6 +38,8 @@ Collaboration features have backend routing wired but minimal frontend integrati
 | **Phase 5.5: Intelligent Notification Deduplication** | `src/notifications/deduplicationEngine/` (5 modules) |
 | **Phase 5.6: AI Scientific Summary Generation** | `src/science/summaryEngine/` (2 modules) |
 | **Phase 5.6: Correlation-Aware Scientific Notifications** | `src/notifications/templates/eventTemplate.ts` |
+| **WeChat channel (WeCom group robot)** — provider abstraction, AES-256-GCM credential storage, SSRF-pinned transport, config API, dispatcher with retry/rate-limit/idempotency, delivery history UI. See [WECHAT_NOTIFICATIONS.md](WECHAT_NOTIFICATIONS.md) | `artifacts/api-server/src/notifications/providers/`, `routes/notificationsWechat.ts` |
+| Test suite (vitest, 103 tests) + ESLint with `react-hooks/rules-of-hooks` | `artifacts/api-server/vitest.config.ts`, `artifacts/astro-sentinel/eslint.config.js` |
 
 ---
 
@@ -45,6 +47,8 @@ Collaboration features have backend routing wired but minimal frontend integrati
 
 | Feature | Status | Location |
 |---|---|---|
+| **WeChat end-to-end delivery to Tencent** | Every layer up to the HTTP boundary is built and tested, but **no message has reached WeCom's servers.** Needs a real robot webhook from the WeCom console — see [WECHAT_NOTIFICATIONS.md](WECHAT_NOTIFICATIONS.md). Treat as unproven in production until then. | `providers/wechat/` |
+| QQ channel | Deliberately not implemented. Tencent has no official API for messaging a personal QQ account from a third party; the group/channel bot route needs QQ Open Platform registration and review. The UI states the reason. | `WeComConfigPanel.tsx` |
 | External links (GCN, ALADIN, ESASky, TNS) | Non-functional UI stubs | Frontend components |
 | Telescope follow-up request UI | Backend schema complete, no frontend | `routes/team.ts` schema |
 | Event localization FITS map viewer | Schema complete, no UI | — |
@@ -67,6 +71,8 @@ Collaboration features have backend routing wired but minimal frontend integrati
 | ~~Correlation scorer coerced `null` position to `0`, yielding a perfect 0° spatial match~~ — could manufacture multi-messenger associations | Fixed 2026-08-16 | `correlationEngine/scorer.ts` |
 | ~~FAR of 0 rendered as "1 per Infinity years"~~ — a 1/0 artifact shown as a scientific statement | Fixed 2026-08-16 | `formatters.ts` |
 | 279 archive events remain scientifically empty (GCN circulars are free text; measurements were never extracted). Now reported honestly rather than fabricated: they carry UNKNOWNs, a lower-bound interest score, and are never passed to the AI as zeros. | Medium | `core.events` where `source='gcn_archive'` |
+| ~~`latency_us` `NOT NULL` with a `0` placeholder — 279 archive events displayed "Latency 0 µs"~~ — the column was also declared `bigserial`, so it carried a `nextval()` DEFAULT: any INSERT omitting it would receive 1, 2, 3 µs as a "measured" latency. Sequence dropped, column nullable, placeholders → NULL. | Fixed 2026-08-17 | migration 0017, `import_archive_to_postgres.py`, `normalizer.py` |
+| `backend/app/ingest/circulars.py` + `gracedb.py` still write `snr=0.0`, `far=0.0`, `sunDistance=90.0`, `moonDistance=90.0` (and `ra/dec=0.0` in gracedb). Standalone scripts, not in the live ingest path, so the Phase 2 sweep missed them — but they reintroduce the hardcoded-90° and null-island bugs if run. | Medium | `backend/app/ingest/` |
 | `eventIngestion.ts` generates **random** sun/moon distances (`randomBetween(30,150)`) | Low (dead stub) | `artifacts/api-server/src/lib/eventIngestion.ts` |
 | `kafka_connected` in heartbeat always `true` even when disconnected | Low | Python WS manager |
 | `eventIngestion.ts` is a no-op stub but still imported | Low | `artifacts/api-server/src/lib/eventIngestion.ts` |

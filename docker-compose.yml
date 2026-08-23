@@ -1,5 +1,5 @@
 ##############################################################################
-# docker-compose.yml — AstroSentinel / Cosmic Alert System
+# docker-compose.yml — Transient Event Detection
 #
 # THE single entry point for the entire stack.
 #
@@ -64,7 +64,18 @@ services:
       - cosmic
 
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-Astro-sentinel}"]
+      # -h 127.0.0.1 is REQUIRED — do not remove it.
+      #
+      # Without -h, pg_isready probes the Unix socket. On a fresh volume the
+      # official entrypoint runs initdb against a TEMPORARY server started with
+      # listen_addresses='' — reachable on the socket but NOT over TCP. The
+      # healthcheck therefore reported "healthy" mid-initialisation, the migrate
+      # container connected over TCP and died with ECONNREFUSED, and api-server
+      # never started because it gates on migrate completing.
+      #
+      # Probing 127.0.0.1 forces the check to test the same TCP listener every
+      # other service actually connects to, so "healthy" means reachable.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-Astro-sentinel}"]
       interval: 5s
       timeout: 5s
       retries: 12
@@ -155,6 +166,18 @@ services:
 
       ORCID_CLIENT_ID:      ${ORCID_CLIENT_ID}
       ORCID_CLIENT_SECRET:  ${ORCID_CLIENT_SECRET}
+
+      # ── Notification providers ──────────────────────────────────────────
+      # Encrypts provider credentials (e.g. the WeCom robot webhook) at rest
+      # in alerts.alert_subscriptions.channel_config. Without it the WeChat
+      # configuration endpoints return 503 rather than storing a plaintext
+      # secret. Generate with: openssl rand -hex 32
+      NOTIFICATION_ENCRYPTION_KEY: ${NOTIFICATION_ENCRYPTION_KEY}
+      # true routes every provider send to an in-process sink. Use it to
+      # exercise the pipeline without posting to a real WeCom group.
+      NOTIFICATION_TEST_MODE:      ${NOTIFICATION_TEST_MODE:-false}
+      NOTIFICATION_MAX_ATTEMPTS:   ${NOTIFICATION_MAX_ATTEMPTS:-5}
+      NOTIFICATION_RETRY_BACKOFF_MS: ${NOTIFICATION_RETRY_BACKOFF_MS:-}
 
     ports:
       - "8000:8000"

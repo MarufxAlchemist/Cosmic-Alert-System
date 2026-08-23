@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # deploy/scripts/backup.sh
 # ─────────────────────────────────────────────────────────────────────────────
-# Automated PostgreSQL backup for Cosmic Alert System.
+# Automated PostgreSQL backup for Transient Event Detection.
 # Invokes the `backup` Docker Compose service which runs pg_dump inside
 # the cosmic-prod network, then gzips and timestamps the output.
 #

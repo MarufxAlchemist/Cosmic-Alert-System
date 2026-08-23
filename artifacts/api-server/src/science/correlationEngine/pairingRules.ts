@@ -21,7 +21,7 @@
  *   EP  + FRB : Speculative.                                               Weight: 0.15
  *   same type : Cross-instrument detection of same physical event.         Weight: 0.5
  *
- * Phase 6.0A — AstroSentinel
+ * Phase 6.0A — Transient Event Detection
  */
 
 import type { CorrelationType } from "./types.js";

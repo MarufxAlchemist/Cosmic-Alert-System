@@ -21,7 +21,7 @@
  *   −15   Significant penalty (heavy revision, very poor localization)
  *   −100  Vetoes the event entirely (retraction) → P3 immediately
  *
- * Phase 5.2 — AstroSentinel
+ * Phase 5.2 — Transient Event Detection
  */
 
 import type { EventClassificationInput } from "./types.js";

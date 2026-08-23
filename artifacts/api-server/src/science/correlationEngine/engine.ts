@@ -18,7 +18,7 @@
  *
  * Output matches docs/correlation.txt schema exactly.
  *
- * Phase 6.0A — AstroSentinel
+ * Phase 6.0A — Transient Event Detection
  */
 
 import type {

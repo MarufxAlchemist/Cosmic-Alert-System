@@ -35,6 +35,33 @@ interface EventUpdatedMessage extends BaseMessage {
   event: RawEvent;
 }
 
+/**
+ * GCN Circular frames.
+ *
+ * The payload key is `circular`, NOT `event`: a circular is a human-authored
+ * report, not a detection. Feeding one through toAstroEvent() would produce a
+ * card with no position, no time and no significance — an event that never
+ * happened. The three types are kept in their own list for the same reason.
+ */
+interface CircularMessageBase extends BaseMessage {
+  sequence: number;
+  circular: RawCircular;
+}
+
+interface CircularAddedMessage extends CircularMessageBase {
+  type: "circular_added";
+}
+
+/** A revised version arrived. The earlier version is still stored and readable. */
+interface CircularUpdatedMessage extends CircularMessageBase {
+  type: "circular_updated";
+}
+
+/** AI extraction finished for a circular that was already visible. */
+interface CircularEnrichedMessage extends CircularMessageBase {
+  type: "circular_enriched";
+}
+
 interface HeartbeatMessage extends BaseMessage {
   type: "heartbeat";
   listener_alive: boolean;
@@ -81,6 +108,9 @@ type ServerMessage =
   | ConnectionAckMessage
   | AlertMessage
   | EventUpdatedMessage
+  | CircularAddedMessage
+  | CircularUpdatedMessage
+  | CircularEnrichedMessage
   | HeartbeatMessage
   | HistoryStartMessage
   | HistoryEventMessage
@@ -104,7 +134,8 @@ interface RawEvent {
   errorRadius: number;
   snr: number;
   far: number;
-  latencyUs: number;
+  // MEASURED ingestion latency — null means UNKNOWN (never received live).
+  latencyUs: number | null;
   // DERIVED sky geometry — null means UNKNOWN, never a placeholder.
   galLon: number | null;
   galLat: number | null;
@@ -120,6 +151,30 @@ interface RawEvent {
   revisionCount?: number;
   classificationTier?: "GOLD" | "BRONZE" | null;
   updatedAt?: string;
+}
+
+/**
+ * A circular as broadcast. The body is deliberately absent: pushing tens of
+ * kilobytes of text to every client on every circular is wasteful, and the
+ * full text is fetched when a researcher opens it.
+ */
+interface RawCircular {
+  id: string;
+  circularId: number;
+  version: number;
+  isLatest: boolean;
+  /** core.events primary key, or null when the circular is attached to nothing. */
+  eventPk: string | null;
+  eventId: string | null;
+  gcnEventId: string | null;
+  subject: string;
+  submitter: string;
+  createdOn: string;
+  associationMethod: string;
+  gcnUrl: string | null;
+  /** Present on circular_enriched only. */
+  status?: string;
+  provider?: string;
 }
 
 interface RawNotification {
@@ -146,7 +201,7 @@ function toAstroEvent(raw: RawEvent): AstroEvent {
     errorRadius:        raw.errorRadius,
     snr:                raw.snr,
     far:                raw.far,
-    latencyUs:          raw.latencyUs,
+    latencyUs:          raw.latencyUs ?? null,
     galLon:             raw.galLon,
     galLat:             raw.galLat,
     sunDistance:        raw.sunDistance,
@@ -210,6 +265,24 @@ export interface UseAstroWebSocketResult {
   subscribedTopics: string[];
   retryCount: number;
   gaveUp: boolean;
+  /**
+   * The most recent circular event, or null. Consumers refetch the affected
+   * event's circulars rather than trying to merge a partial payload into their
+   * own cache — the body is not in the frame, so a merge could only produce a
+   * half-populated circular.
+   */
+  latestCircular: CircularSignal | null;
+}
+
+/** What happened to a circular, for a consumer deciding whether to refetch. */
+export interface CircularSignal {
+  kind: "added" | "updated" | "enriched";
+  circularId: number;
+  version: number;
+  eventPk: string | null;
+  eventId: string | null;
+  subject: string;
+  receivedAt: string;
 }
 
 export function useAstroWebSocket(): UseAstroWebSocketResult {
@@ -221,6 +294,7 @@ export function useAstroWebSocket(): UseAstroWebSocketResult {
   const [subscribedTopics,     setSubscribedTopics]     = useState<string[]>([]);
   const [retryCount,           setRetryCount]           = useState(0);
   const [gaveUp,               setGaveUp]               = useState(false);
+  const [latestCircular,       setLatestCircular]       = useState<CircularSignal | null>(null);
 
   const wsRef            = useRef<WebSocket | null>(null);
   const retryCountRef    = useRef(0);
@@ -342,6 +416,38 @@ export function useAstroWebSocket(): UseAstroWebSocketResult {
           next[idx] = updated;
           return next;
         });
+        break;
+      }
+
+      case "circular_added":
+      case "circular_updated":
+      case "circular_enriched": {
+        // Circulars are NOT pushed into `events`. That array holds
+        // astrophysical detections rendered as event cards; a human-authored
+        // report has no position, no SNR and no detection time, and putting one
+        // there would render a card full of missing measurements for something
+        // that was never a detection.
+        const kind =
+          msg.type === "circular_added"
+            ? "added"
+            : msg.type === "circular_updated"
+              ? "updated"
+              : "enriched";
+
+        setLatestCircular({
+          kind,
+          circularId: msg.circular.circularId,
+          version: msg.circular.version,
+          eventPk: msg.circular.eventPk,
+          eventId: msg.circular.eventId,
+          subject: msg.circular.subject,
+          receivedAt: msg.sent_at,
+        });
+
+        console.info(
+          `[ws] circular_${kind}: #${msg.circular.circularId} v${msg.circular.version}` +
+            (msg.circular.eventId ? ` -> ${msg.circular.eventId}` : " (not attached to an event)"),
+        );
         break;
       }
 
@@ -487,5 +593,6 @@ export function useAstroWebSocket(): UseAstroWebSocketResult {
     subscribedTopics,
     retryCount,
     gaveUp,
+    latestCircular,
   };
 }

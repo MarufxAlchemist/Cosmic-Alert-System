@@ -473,16 +473,54 @@ def _download_archive() -> list[dict]:
         ARCHIVE_URL,
         headers={
             "Accept":     "application/gzip",
-            "User-Agent": "CosmicAlertSystem/1.0",
+            "User-Agent": "TransientEventDetection/1.0",
         },
     )
 
     with urllib.request.urlopen(req, timeout=DOWNLOAD_TIMEOUT_S) as resp:
         raw_bytes = resp.read()
 
-    size_mb = len(raw_bytes) / (1024 * 1024)
-    print(f"  Downloaded {size_mb:.1f} MB")
+    print(f"  Downloaded {len(raw_bytes) / (1024 * 1024):.1f} MB")
 
+    # Parsing lives in _parse_archive_bytes so the DB backfill reads the
+    # archive through exactly the same code path as this pipeline.
+    return _parse_archive_bytes(raw_bytes)
+
+
+def load_archive(path: Path | None = None) -> list[dict]:
+    """
+    Return every circular in the GCN archive, from a local file or the network.
+
+    Split out so the historical database backfill
+    (backend/scripts/backfill_gcn_circulars.py) reuses this parser instead of
+    carrying a second one. A repository with two archive readers is a
+    repository where they disagree.
+
+    Parameters
+    ----------
+    path : Path | None
+        A local ``archive.json.tar.gz``. When None the archive is downloaded.
+        The repository already ships ``gcn_archive.json.tar.gz`` at the project
+        root, so a backfill normally needs no network at all.
+    """
+    if path is None:
+        return _download_archive()
+
+    if not path.exists():
+        raise FileNotFoundError(f"GCN archive not found: {path}")
+
+    print(f"Reading GCN Circulars archive from {path} ...")
+    with open(path, "rb") as fh:
+        return _parse_archive_bytes(fh.read())
+
+
+def _parse_archive_bytes(raw_bytes: bytes) -> list[dict]:
+    """
+    Parse the bytes of ``archive.json.tar.gz`` into a list of circular dicts.
+
+    The archive is a gzipped tar holding one JSON file per circular. The
+    single-large-array layout is also handled, for forward-compatibility.
+    """
     circulars: list[dict] = []
     buf = io.BytesIO(raw_bytes)
 
@@ -497,12 +535,8 @@ def _download_archive() -> list[dict]:
 
         print(f"  Found {len(json_members):,} JSON files in archive")
 
-        # Heuristic: if there is exactly one large file, it is probably a
-        # single JSON array.  Otherwise each file is one circular.
         if len(json_members) == 1 and json_members[0].size > 1_000_000:
             member = json_members[0]
-            print(f"  Extracting single array {member.name} "
-                  f"({member.size / (1024*1024):.1f} MB) ...")
             f = tar.extractfile(member)
             if f is None:
                 raise RuntimeError(f"Cannot extract {member.name}")
@@ -512,7 +546,6 @@ def _download_archive() -> list[dict]:
             elif isinstance(data, dict):
                 circulars = [data]
         else:
-            # Many individual files — parse each one
             parsed = 0
             errors = 0
             for member in json_members:
@@ -526,7 +559,7 @@ def _download_archive() -> list[dict]:
                     elif isinstance(data, list):
                         circulars.extend(c for c in data if isinstance(c, dict))
                     parsed += 1
-                except (json.JSONDecodeError, Exception) as exc:
+                except Exception as exc:
                     errors += 1
                     if errors <= 3:
                         print(f"  [warn] Failed to parse {member.name}: {exc}")

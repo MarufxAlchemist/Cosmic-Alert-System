@@ -37,7 +37,7 @@ export type CorrelationConfidence = "HIGH" | "MEDIUM" | "LOW" | "NONE";
  * Physical nature of a correlated pair.
  *
  *   multi_messenger  — different messengers (photons, GW, neutrinos, radio) from the same source.
- *                      This is AstroSentinel's primary scientific target (e.g. GW+GRB, EP+GW).
+ *                      This is Transient Event Detection's primary scientific target (e.g. GW+GRB, EP+GW).
  *   cross_detection  — same event type, same sky position, close in time.
  *                      Almost certainly the same source detected by two instruments.
  *                      Scientifically valuable for cross-calibration, not a new multi-messenger event.

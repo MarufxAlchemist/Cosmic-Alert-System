@@ -9,6 +9,8 @@ import { setWebSocketServer } from "./lib/eventBroadcaster";
 import { startIngestion } from "./lib/eventIngestion";
 import { startKafkaConsumer } from "./lib/kafkaConsumer";
 import { runBootstrap } from "./lib/bootstrap";
+import { startDispatcher } from "./notifications/notificationDispatcher";
+import { startExtractionWorker } from "./circulars/extractionWorker";
 
 const rawPort = process.env["PORT"];
 
@@ -47,6 +49,8 @@ wss.on("connection", (ws, req) => {
         "gcn.notices.icecube.gold_bronze_track_alerts",
         "gcn.notices.swift.bat.guano",
         "gcn.notices.einstein_probe.wxt.alert",
+        // Human-authored scientific communications, handled on their own path.
+        "gcn.circulars",
       ],
       buffer_size: 100,
       heartbeat_interval: 30000,
@@ -86,6 +90,25 @@ server.listen(port, () => {
   // ── SIMULATOR (no-op) ────────────────────────────────────────────────────
   // startIngestion() is kept here for import compatibility but does nothing.
   startIngestion();
+
+  // ── NOTIFICATION DELIVERY LOOP ───────────────────────────────────────────
+  // Sends queued provider-channel deliveries and picks up scheduled retries.
+  //
+  // Started before the Kafka consumer on purpose: deliveries are rows in
+  // alerts.alerts, so anything left mid-backoff by a restart or a crash is
+  // resumed here rather than lost. An alert that vanishes because a container
+  // was redeployed is exactly the alert someone needed.
+  startDispatcher();
+
+  // ── GCN CIRCULAR AI ENRICHMENT LOOP ──────────────────────────────────────
+  // Drains core.circular_extractions. Started independently of the Kafka
+  // bridge on purpose: extractions queued before a restart, and any left
+  // mid-backoff, are resumed here whether or not the bridge ever connects.
+  //
+  // This loop can never lose a circular. It reads circulars and writes
+  // extraction rows; a total provider outage leaves the circulars stored,
+  // associated and fully readable with their enrichment marked failed.
+  startExtractionWorker();
 
   // ── BOOTSTRAP SEED ───────────────────────────────────────────────────────
   // Inserts up to 10 historical events from recent_events.json only when

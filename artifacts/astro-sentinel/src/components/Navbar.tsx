@@ -41,9 +41,18 @@ export function Navbar({
         <button className="p-1.5 rounded hover:bg-accent hover:text-foreground transition-colors" title="Search">
           <Search className="w-3.5 h-3.5" />
         </button>
-        <button className="p-1.5 rounded hover:bg-accent hover:text-foreground transition-colors" title="Settings">
+        {/* Was a dead button — rendered, hovered, and did nothing. */}
+        <Link
+          href="/settings"
+          title="Settings"
+          className={`p-1.5 rounded transition-colors ${
+            location.startsWith("/settings")
+              ? "bg-primary/15 text-primary"
+              : "hover:bg-accent hover:text-foreground"
+          }`}
+        >
           <Settings className="w-3.5 h-3.5" />
-        </button>
+        </Link>
         {/* Notification Center */}
         <NotificationCenter />
       </div>

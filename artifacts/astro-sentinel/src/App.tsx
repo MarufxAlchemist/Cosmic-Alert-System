@@ -19,6 +19,7 @@ import TeamPage from "@/pages/team";
 import ResearchWorkspacePage from "@/pages/research-workspace";
 import BookmarksPage from "@/pages/bookmarks";
 import WebSocketDebug from "@/pages/websocket-debug";
+import SettingsPage from "@/pages/settings";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 
@@ -74,6 +75,11 @@ function Router() {
           <Route path="/team">
             <ProtectedRoute>
               <TeamPage />
+            </ProtectedRoute>
+          </Route>
+          <Route path="/settings">
+            <ProtectedRoute>
+              <SettingsPage />
             </ProtectedRoute>
           </Route>
           <Route path="/debug/ws" component={WebSocketDebug} />

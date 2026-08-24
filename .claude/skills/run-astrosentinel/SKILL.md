@@ -107,6 +107,8 @@ Verified `smoke` output:
 [1/5] Mission Control
   PASS  signed in (no login form)
   PASS  live event list rendered
+  PASS  every event type appears in the header composition
+  PASS  composition reconciles with the total
 [2/5] Event Archive — categories
   PASS  category cards rendered
         categories: ["Gamma-ray Bursts","Gravitational Waves","Fast Radio Bursts","Neutrinos","Unclassified Transients"]
@@ -131,6 +133,11 @@ SMOKE PASSED
 `smoke` opens whichever event has the **most attached GCN circulars**, so the circular and
 timeline panels have content. On a database with no circulars it still passes the archive steps
 and reports the event-detail ones honestly.
+
+Step 1 cross-checks the Mission Control header against `/api/events/stats`: every `event_type`
+with a non-zero count must appear in the header, and the type counts must sum to `totalEvents`.
+The strip this header replaced hardcoded GRB/GW/FRB, so on a database carrying EP, NU and OTHER
+it rendered 239 directly beside "Total: 305" and said nothing about the missing 66.
 
 Step 2 cross-checks the rendered category counts against `/api/events/groups` and asserts
 `ungrouped` is empty — an `event_type` in the database belonging to no category would be

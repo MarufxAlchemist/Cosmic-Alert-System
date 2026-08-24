@@ -474,6 +474,28 @@ async function cmdSmoke() {
   ok("signed in (no login form)", (await page.locator("text=Researcher Access Portal").count()) === 0);
   ok("live event list rendered", (await page.locator("text=LIVE EVENTS").count()) > 0);
 
+  // The header composition must account for EVERY event_type, and the chips
+  // must reconcile with the total shown beside them. The strip this replaced
+  // hardcoded GRB/GW/FRB, so on this database it displayed 239 next to a
+  // "Total: 305" and said nothing about the missing 66.
+  const statsApi = await page.evaluate(() => fetch("/api/events/stats").then((r) => r.json()));
+  const headerText = await page.locator("header").first().innerText();
+  const missing = Object.entries(statsApi.byType)
+    .filter(([, n]) => Number(n) > 0)
+    .map(([t]) => t)
+    .filter((t) => !new RegExp(`\\b${t}\\b`).test(headerText));
+  ok(
+    "every event type appears in the header composition",
+    missing.length === 0,
+    `absent: ${JSON.stringify(missing)}`,
+  );
+  const chipSum = Object.values(statsApi.byType).reduce((n, c) => n + Number(c), 0);
+  ok(
+    "composition reconciles with the total",
+    chipSum === Number(statsApi.totalEvents),
+    `types sum to ${chipSum}, total is ${statsApi.totalEvents} — the residual segment covers this, but it should be visible`,
+  );
+
   // 2. Archive landing — one card per messenger category, archive-wide counts.
   console.log("\n[2/5] Event Archive — categories");
   await goto(page, `${BASE}/events`, "text=Event Archive");

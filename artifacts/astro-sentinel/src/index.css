@@ -274,3 +274,19 @@
 .scrollbar-thin::-webkit-scrollbar-thumb:hover { 
   background: hsl(var(--muted-foreground)); 
 }
+
+/* ── Mission Control scan line ────────────────────────────────────────────────
+   A 1px highlight that sweeps the bottom edge of the header while the
+   WebSocket is connected. It is decorative, and deliberately only rendered
+   when the connection is live, so a still line is a real signal that the feed
+   has dropped rather than an animation nobody notices. Honours
+   prefers-reduced-motion. */
+@keyframes mc-scan {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+.mc-scan { animation: mc-scan 4.5s linear infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .mc-scan { animation: none; opacity: 0.5; }
+}

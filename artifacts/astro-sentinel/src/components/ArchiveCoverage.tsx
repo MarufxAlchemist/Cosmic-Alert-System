@@ -1,10 +1,15 @@
-import { useState, useMemo } from "react";
-import { Database, ChevronRight } from "lucide-react";
-
 /**
  * ArchiveCoverage
  * ───────────────
  * How much of the archive is actually measured, as opposed to merely present.
+ *
+ * THE PANEL THAT USED TO LIVE HERE IS NOW PART OF MissionControlBar. It was a
+ * strip of its own under the stats strip; folding it into the one header
+ * removed a row and put the field-by-field detail behind a control instead of
+ * permanently on screen. What stays here is the measurement itself —
+ * `computeCoverage` and the row that renders one field — because the rules
+ * below are the reason those numbers are trustworthy, and a second
+ * implementation beside them would drift.
  *
  * The stats strip reports "Total: 304". Read alone that implies 304 usable
  * events, and it does not: 279 of them are GCN circulars whose free text was
@@ -118,12 +123,12 @@ export function computeCoverage(events: readonly any[]): CoverageSummary {
   return { total, complete, partial, empty, fields };
 }
 
-function pct(n: number, d: number): number {
+export function pct(n: number, d: number): number {
   return d > 0 ? (n / d) * 100 : 0;
 }
 
 /** One field row: a proportional bar plus the raw counts behind it. */
-function FieldRow({ f }: { f: FieldCoverage }) {
+export function FieldRow({ f }: { f: FieldCoverage }) {
   const p = pct(f.measured, f.applicable);
   const missing = f.applicable - f.measured;
   return (
@@ -148,75 +153,6 @@ function FieldRow({ f }: { f: FieldCoverage }) {
       >
         {missing > 0 ? `−${missing}` : "—"}
       </span>
-    </div>
-  );
-}
-
-export function ArchiveCoverage({ events }: { events: readonly any[] }) {
-  const [open, setOpen] = useState(false);
-  const c = useMemo(() => computeCoverage(events), [events]);
-
-  if (c.total === 0) return null;
-
-  const emptyPct = pct(c.empty, c.total);
-  const completePct = pct(c.complete, c.total);
-  const partialPct = pct(c.partial, c.total);
-
-  return (
-    <div className="shrink-0 border-b border-border bg-[hsl(var(--navbar-bg))] text-[11px] font-mono">
-      {/* Always-visible summary — the counterweight to "Total: N" */}
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        className="flex h-7 w-full items-center gap-2 px-3 text-left text-muted-foreground transition-colors hover:bg-accent/40"
-      >
-        <Database className="h-3 w-3 shrink-0 opacity-70" />
-        <span className="shrink-0">Measured coverage:</span>
-
-        {/* Proportional bar: complete / partial / no measurements */}
-        <span className="flex h-2 w-28 shrink-0 overflow-hidden rounded-sm bg-muted" aria-hidden="true">
-          <span className="bg-emerald-500" style={{ width: `${completePct}%` }} />
-          <span className="bg-sky-500/70" style={{ width: `${partialPct}%` }} />
-          <span className="bg-amber-500/70" style={{ width: `${emptyPct}%` }} />
-        </span>
-
-        <span className="shrink-0 text-emerald-600 dark:text-emerald-400">
-          {c.complete} complete
-        </span>
-        <span className="shrink-0 text-border">·</span>
-        <span className="shrink-0 text-sky-600 dark:text-sky-400">{c.partial} partial</span>
-        <span className="shrink-0 text-border">·</span>
-        <span className="shrink-0 text-amber-600 dark:text-amber-400">
-          {c.empty} no measurements ({emptyPct.toFixed(0)}%)
-        </span>
-
-        <ChevronRight
-          className={`ml-auto h-3 w-3 shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
-        />
-      </button>
-
-      {open && (
-        <div className="space-y-1.5 border-t border-border/60 px-3 py-2.5">
-          <div className="flex flex-col gap-1.5">
-            {c.fields.map((f) => (
-              <FieldRow key={f.key} f={f} />
-            ))}
-          </div>
-
-          <p className="pt-1.5 text-[10px] leading-relaxed text-muted-foreground/80">
-            Counts are of events currently loaded ({c.total}). A field is counted only
-            against the events for which it is meaningful — fluence against GRBs, dispersion
-            measure against FRBs. &ldquo;Complete&rdquo; means all four core quantities are
-            present: position, localization, significance and false alarm rate.
-          </p>
-          <p className="text-[10px] leading-relaxed text-muted-foreground/70">
-            Unmeasured is not zero. GCN circulars are free text and were never parsed for
-            structured measurements, so those events carry UNKNOWN rather than a fabricated
-            value. This is a property of the upstream notices, not a data fault.
-          </p>
-        </div>
-      )}
     </div>
   );
 }

@@ -1,12 +1,12 @@
 import React, { useState, useMemo } from "react";
 import { useAstroWebSocket } from "@/hooks/useAstroWebSocket";
-import { useListEvents, useGetEventStats } from "@workspace/api-client-react";
+import { useListEvents } from "@workspace/api-client-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { AstroEvent } from "@workspace/api-client-react/src/generated/api.schemas";
 import { formatMicrosecondDate, formatLatency, formatMeasured, formatExp, formatDerived } from "@/lib/formatters";
 import { useScienceMode } from "@/lib/ScienceModeContext";
 import { SciencePanel } from "@/components/SciencePanel";
-import { ArchiveCoverage } from "@/components/ArchiveCoverage";
+import { MissionControlBar } from "@/components/MissionControlBar";
 
 function typeColor(type: string) {
   switch (type) {
@@ -24,62 +24,6 @@ function typeLabel(type: string) {
     case "FRB": return "Fast radio burst";
     default:    return type;
   }
-}
-
-function TimelineBar({ events = [] }: { events?: AstroEvent[] }) {
-  const days: { label: string; date: Date }[] = [];
-  const now = new Date();
-  for (let i = 7; i >= 0; i--) {
-    const d = new Date(now);
-    d.setDate(d.getDate() - i);
-    days.push({
-      label: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`,
-      date: d,
-    });
-  }
-  const today = days[days.length - 1];
-  const countByDay: Record<string, number> = {};
-  if (Array.isArray(events)) {
-    events.forEach(e => {
-      if (e && e.detectionTime) {
-        const d = e.detectionTime.slice(0, 10);
-        countByDay[d] = (countByDay[d] || 0) + 1;
-      }
-    });
-  }
-  return (
-    <div className="flex items-center gap-0 h-9 bg-[hsl(var(--sidebar))] border-b border-border px-3 shrink-0 overflow-x-auto scrollbar-thin">
-      <div className="flex items-center gap-1.5 text-xs font-mono text-muted-foreground mr-3 shrink-0">
-        <div className="w-4 h-4 rounded-full border border-muted-foreground flex items-center justify-center">
-          <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground" />
-        </div>
-        <span>{days[0].label}</span>
-      </div>
-      <div className="flex items-center flex-1 min-w-0">
-        {days.slice(1).map((day) => {
-          const isToday = day.label === today.label;
-          const count = countByDay[day.label] || 0;
-          return (
-            <React.Fragment key={day.label}>
-              <div className="flex-1 h-px bg-border min-w-4" />
-              <div className="flex flex-col items-center gap-0.5 shrink-0">
-                <div className={`w-5 h-5 rounded-full border flex items-center justify-center transition-colors ${isToday ? "border-primary bg-primary/20" : "border-border bg-card hover:border-muted-foreground"}`}>
-                  {count > 0 && <div className={`w-2 h-2 rounded-full ${isToday ? "bg-primary" : "bg-muted-foreground"}`} />}
-                </div>
-                <span className={`text-[9px] font-mono whitespace-nowrap ${isToday ? "text-primary" : "text-muted-foreground"}`}>{day.label.slice(5)}</span>
-              </div>
-            </React.Fragment>
-          );
-        })}
-      </div>
-      <div className="flex items-center gap-1.5 text-xs font-mono text-primary ml-3 shrink-0">
-        <span>{today.label}</span>
-        <div className="w-4 h-4 rounded-full border border-primary bg-primary/20 flex items-center justify-center">
-          <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-        </div>
-      </div>
-    </div>
-  );
 }
 
 function lifecycleBadge(lifecycle?: string) {
@@ -299,42 +243,9 @@ function RightPanel({ event }: { event: AstroEvent | null }) {
   );
 }
 
-function StatsStrip() {
-  const { data: stats } = useGetEventStats({ query: { refetchInterval: 10000, queryKey: ["event-stats"] } });
-  const { scienceMode } = useScienceMode();
-  if (!stats) return null;
-
-  const totalEvents    = (stats as any)?.totalEvents    ?? (stats as any)?.total     ?? 0;
-  const recentRate     = (stats as any)?.recentRate     ?? (stats as any)?.rate      ?? 0;
-  const byType         = (stats as any)?.byType         ?? {};
-  const byObservatory  = (stats as any)?.byObservatory  ?? [];
-  
-  const formattedTotal = typeof totalEvents === 'number' ? totalEvents.toLocaleString() : Number(totalEvents || 0).toLocaleString();
-
-  return (
-    <div className="flex items-center gap-4 px-3 h-7 bg-[hsl(var(--navbar-bg))] border-b border-border shrink-0 text-[11px] font-mono text-muted-foreground overflow-x-auto scrollbar-thin">
-      <span>Total: <span className="text-foreground font-bold">{formattedTotal}</span></span>
-      <span className="text-border">|</span>
-      <span>Rate: <span className="text-primary font-bold">{Number(recentRate).toFixed(1)}/hr</span></span>
-      <span className="text-border">|</span>
-      <span>GRB: <span className="text-orange-800 dark:text-amber-400 font-bold">{byType.GRB ?? 0}</span></span>
-      <span>GW: <span className="text-green-800 dark:text-emerald-400 font-bold">{byType.GW ?? 0}</span></span>
-      <span>FRB: <span className="text-amber-900 dark:text-yellow-300 font-bold">{byType.FRB ?? 0}</span></span>
-      {scienceMode && <>
-        <span className="text-border">|</span>
-        <span className="text-violet-400 font-semibold tracking-wider">RESEARCHER MODE</span>
-        <span className="text-border">|</span>
-        {byObservatory.map((item: { observatory: string; count: number }) => (
-          <span key={item.observatory}>{item.observatory}: <span className="text-foreground font-bold">{item.count}</span></span>
-        ))}
-      </>}
-    </div>
-  );
-}
-
 export default function Dashboard() {
   const { scienceMode } = useScienceMode();
-  const { events: liveEvents } = useAstroWebSocket();
+  const { events: liveEvents, isConnected } = useAstroWebSocket();
   const { data: initialData } = useListEvents({ limit: 300 });
   const [selectedEvent, setSelectedEvent] = useState<AstroEvent | null>(null);
   
@@ -393,10 +304,10 @@ export default function Dashboard() {
   }, [allEvents, selectedEvent]);
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
-      <StatsStrip />
-      {/* Counterweight to "Total: N" — how much of that total is actually measured. */}
-      <ArchiveCoverage events={allEvents} />
-      <TimelineBar events={allEvents} />
+      {/* One header, not three strips. Totals, composition, activity and
+          measured coverage in a single instrument, with the per-observatory
+          and per-field detail one click away rather than always on screen. */}
+      <MissionControlBar events={allEvents} isConnected={isConnected} />
       <div className="flex flex-1 overflow-hidden">
         <div className="w-52 shrink-0 border-r border-border flex flex-col overflow-hidden bg-[hsl(var(--sidebar))]">
           <div className="px-2.5 py-1.5 border-b border-border shrink-0 flex items-center justify-between">

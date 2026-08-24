@@ -49,7 +49,20 @@ async function buildAll() {
       "pg-native",
       "oracledb",
       "mongodb-client-encryption",
-      "nodemailer",
+      // "nodemailer" is deliberately NOT external.
+      //
+      // It is pure JavaScript with no .node binaries, so esbuild bundles it
+      // fine. Marking it external meant `await import("nodemailer")` had to
+      // resolve from disk at runtime — and in the Docker image it cannot.
+      // Dockerfile.api copies only the ROOT /workspace/node_modules, but this
+      // is a pnpm workspace: nodemailer is an api-server dependency, so its
+      // symlink lives in artifacts/api-server/node_modules and never reaches
+      // /app. Every SMTP send then died with
+      // "Cannot find package 'nodemailer' imported from /app/dist/index.mjs",
+      // which is why team invitation emails silently failed in containers.
+      //
+      // bcrypt below stays external because it IS a native module — but
+      // nothing imports it (auth.ts uses bcryptjs), so it is never loaded.
       "handlebars",
       "knex",
       "typeorm",

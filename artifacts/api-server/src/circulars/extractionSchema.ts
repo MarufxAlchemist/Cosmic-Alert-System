@@ -81,12 +81,32 @@ export const EXTRACTION_CONFIDENCE = ["high", "medium", "low"] as const;
 /**
  * A verbatim span from the circular supporting the claim beside it.
  *
- * Capped at 400 characters: long enough to carry a full sentence with its
- * numbers, short enough that it cannot become a paraphrase of the whole
- * circular. Nullable because some claims (an instrument name in a header) have
- * no single supporting sentence.
+ * Long enough to carry a full sentence with its numbers, short enough that it
+ * cannot become a paraphrase of the whole circular. Nullable because some
+ * claims (an instrument name in a header) have no single supporting sentence.
  */
-const SourceText = z.string().min(1).max(400).nullable();
+const SOURCE_TEXT_DISPLAY_LIMIT = 1000;
+const SOURCE_TEXT_HARD_LIMIT = 3000;
+
+const SourceText = z
+  .string()
+  .min(1)
+  // TRUNCATED, NOT REJECTED.
+  //
+  // This was max(400), and a real circular (GCN 45433, an Einstein Probe
+  // non-detection) failed validation outright because the model quoted a
+  // sentence longer than that. Losing an entire scientific extraction —
+  // observations, limits, redshift, the lot — over the length of one
+  // supporting quote is a far worse outcome than a shortened quote.
+  //
+  // The ellipsis is deliberate: this field is presented as verbatim, so a
+  // shortened one must visibly announce that it is incomplete rather than
+  // quietly misrepresent where the sentence ended.
+  .max(SOURCE_TEXT_HARD_LIMIT)
+  .transform((s) =>
+    s.length > SOURCE_TEXT_DISPLAY_LIMIT ? `${s.slice(0, SOURCE_TEXT_DISPLAY_LIMIT)}…` : s,
+  )
+  .nullable();
 
 /**
  * A measured value with the units the circular used.
@@ -101,15 +121,15 @@ const Quantity = z
     /** 1-sigma uncertainty as stated. null = the circular quoted none. */
     uncertainty: z.number().nullable(),
     /** Exactly as written in the circular, e.g. "mag", "mJy", "erg/cm2", "arcsec". */
-    unit: z.string().min(1).max(40),
+    unit: z.string().min(1).max(80),
   })
   .nullable();
 
 const Observation = z.object({
   band: z.enum(OBSERVATION_BANDS),
   /** e.g. "Swift-XRT", "GTC/OSIRIS". null = the circular names no instrument. */
-  instrument: z.string().min(1).max(120).nullable(),
-  facility: z.string().min(1).max(120).nullable(),
+  instrument: z.string().min(1).max(300).nullable(),
+  facility: z.string().min(1).max(300).nullable(),
   detection: z.enum(DETECTION_STATES),
   /**
    * The limiting sensitivity for an `upper_limit`, in the circular's own
@@ -152,7 +172,7 @@ export const CircularExtractionSchema = z.object({
 
   spectroscopy: z.object({
     status: z.enum(SPECTROSCOPY_STATES),
-    facility: z.string().min(1).max(120).nullable(),
+    facility: z.string().min(1).max(300).nullable(),
     sourceText: SourceText,
   }),
 
@@ -168,7 +188,7 @@ export const CircularExtractionSchema = z.object({
       uncertainty: z.number().nullable(),
       kind: z.enum(REDSHIFT_KINDS),
       /** Who reported it, if the circular attributes it. */
-      reportedBy: z.string().min(1).max(160).nullable(),
+      reportedBy: z.string().min(1).max(400).nullable(),
       sourceText: SourceText,
     })
     .nullable(),
@@ -186,7 +206,7 @@ export const CircularExtractionSchema = z.object({
    */
   classification: z
     .object({
-      value: z.string().min(1).max(160),
+      value: z.string().min(1).max(400),
       sourceText: SourceText,
     })
     .nullable(),
@@ -195,7 +215,7 @@ export const CircularExtractionSchema = z.object({
    * A neutral restatement of what the circular reports, for scanning a long
    * event history. It supplements the original text and never replaces it.
    */
-  scientificSummary: z.string().min(20).max(1200),
+  scientificSummary: z.string().min(20).max(3000),
 
   /**
    * Confidence that the extracted fields are EXPLICITLY SUPPORTED BY THIS
@@ -209,7 +229,7 @@ export const CircularExtractionSchema = z.object({
    * the model's own words. Makes "we did not find it" visibly different from
    * "we did not look", which is the distinction a null alone cannot carry.
    */
-  notReported: z.array(z.string().min(1).max(80)).max(20),
+  notReported: z.array(z.string().min(1).max(200)).max(20),
 });
 
 export type CircularExtraction = z.infer<typeof CircularExtractionSchema>;

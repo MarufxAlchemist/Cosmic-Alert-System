@@ -1,7 +1,8 @@
 import React from "react";
 import { useSearchParams } from "wouter";
-import { Bell, Monitor, Moon, Settings as SettingsIcon, Sun } from "lucide-react";
+import { Activity, Bell, Database, Monitor, Moon, Settings as SettingsIcon, Sparkles, Sun } from "lucide-react";
 import { NotificationPreferences } from "@/components/notifications/NotificationPreferences";
+import { ArchiveTab, ExtractionTab, PipelineTab } from "@/components/settings/DiagnosticsTabs";
 import { useTheme } from "@/lib/ThemeContext";
 import { useScienceMode } from "@/lib/ScienceModeContext";
 
@@ -22,11 +23,16 @@ import { useScienceMode } from "@/lib/ScienceModeContext";
  * reports whether one is configured — never its value.
  */
 
-type TabKey = "display" | "notifications";
+type TabKey = "display" | "notifications" | "pipeline" | "extraction" | "archive";
 
 const TABS: readonly { key: TabKey; label: string; icon: React.ReactNode }[] = [
   { key: "display", label: "Display", icon: <Monitor className="w-3.5 h-3.5" /> },
   { key: "notifications", label: "Notifications", icon: <Bell className="w-3.5 h-3.5" /> },
+  // Diagnostics. Each answers a question that previously required server logs
+  // or psql to answer at all.
+  { key: "pipeline", label: "Pipeline", icon: <Activity className="w-3.5 h-3.5" /> },
+  { key: "extraction", label: "AI extraction", icon: <Sparkles className="w-3.5 h-3.5" /> },
+  { key: "archive", label: "Archive", icon: <Database className="w-3.5 h-3.5" /> },
 ];
 
 // ─── A labelled on/off row ───────────────────────────────────────────────────
@@ -156,7 +162,7 @@ export default function SettingsPage() {
         <div>
           <h1 className="text-sm font-bold tracking-tight text-foreground">Settings</h1>
           <p className="text-[10px] text-muted-foreground font-mono">
-            Display and alert delivery preferences
+            Display, alert delivery, and system diagnostics
           </p>
         </div>
       </div>
@@ -183,7 +189,11 @@ export default function SettingsPage() {
         </nav>
 
         <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin p-4">
-          {active === "display" ? <DisplayTab /> : <NotificationsTab />}
+          {active === "display" && <DisplayTab />}
+          {active === "notifications" && <NotificationsTab />}
+          {active === "pipeline" && <PipelineTab />}
+          {active === "extraction" && <ExtractionTab />}
+          {active === "archive" && <ArchiveTab />}
         </div>
       </div>
     </div>

@@ -25,12 +25,14 @@ export class GeminiProvider implements LLMProvider {
   private modelName: string;
   private timeoutMs: number;
   private maxRetries: number;
+  private maxOutputTokens: number;
 
   constructor(config: LLMProviderConfig) {
     this.genAI = new GoogleGenerativeAI(config.apiKey);
     this.modelName = config.model ?? "gemini-2.5-flash";
     this.timeoutMs = config.timeoutMs ?? 30_000;
     this.maxRetries = config.maxRetries ?? 3;
+    this.maxOutputTokens = config.maxOutputTokens ?? 8192;
     this.name = `gemini/${this.modelName}`;
   }
 
@@ -41,7 +43,10 @@ export class GeminiProvider implements LLMProvider {
         // Force JSON-only output — eliminates markdown fences and prose wrapping
         responseMimeType: "application/json",
         temperature: 0.2,   // Low temperature for factual, consistent output
-        maxOutputTokens: 2048,
+        // Not hardcoded: a truncated response is indistinguishable from a
+        // malformed one, and 2048 silently cut the circular-extraction schema
+        // off mid-JSON. See LLMProviderConfig.maxOutputTokens.
+        maxOutputTokens: this.maxOutputTokens,
       },
       safetySettings: [
         // Astronomy content should never trigger these; setting to BLOCK_NONE

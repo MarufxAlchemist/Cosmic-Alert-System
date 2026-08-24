@@ -141,6 +141,13 @@
       "when": 1784884352895,
       "tag": "0019_gcn_circulars",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1784884352896,
+      "tag": "0020_search_indexes",
+      "breakpoints": true
     }
   ]
 }

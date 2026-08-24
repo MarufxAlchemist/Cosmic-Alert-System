@@ -4,6 +4,7 @@ import { useScienceMode } from "@/lib/ScienceModeContext";
 import { useTheme } from "@/lib/ThemeContext";
 import { NotificationCenter } from "./notifications/NotificationCenter";
 import { ResearcherMenu } from "./ResearcherMenu";
+import { SearchPalette, useSearchPalette } from "./SearchPalette";
 
 interface NavbarProps {
   isConnected?: boolean;
@@ -19,6 +20,9 @@ export function Navbar({
   retryCount = 0 
 }: NavbarProps) {
   const [location] = useLocation();
+  // Owned here so the icon and the Ctrl/Cmd-K shortcut share one piece of
+  // state and cannot disagree about whether the palette is open.
+  const { open: searchOpen, setOpen: setSearchOpen } = useSearchPalette();
   const { scienceMode, toggleScienceMode } = useScienceMode();
   const { isDark, toggleTheme } = useTheme();
 
@@ -38,7 +42,12 @@ export function Navbar({
       </div>
       {/* Icon actions */}
       <div className="flex items-center gap-1 text-muted-foreground mr-4">
-        <button className="p-1.5 rounded hover:bg-accent hover:text-foreground transition-colors" title="Search">
+        {/* Was a dead button — rendered, hovered, and did nothing. */}
+        <button
+          onClick={() => setSearchOpen(true)}
+          className="p-1.5 rounded hover:bg-accent hover:text-foreground transition-colors"
+          title="Search events and circulars (Ctrl+K)"
+        >
           <Search className="w-3.5 h-3.5" />
         </button>
         {/* Was a dead button — rendered, hovered, and did nothing. */}
@@ -152,6 +161,8 @@ export function Navbar({
       <div className="ml-3 text-xs text-muted-foreground font-mono">
         v1.0.0
       </div>
+
+      <SearchPalette open={searchOpen} onOpenChange={setSearchOpen} />
     </nav>
   );
 }

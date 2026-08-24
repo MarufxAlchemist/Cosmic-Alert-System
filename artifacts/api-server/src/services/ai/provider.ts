@@ -63,6 +63,18 @@ export interface LLMProviderConfig {
   timeoutMs?: number;
   /** Maximum retry attempts on transient errors. Default: 3. */
   maxRetries?: number;
+  /**
+   * Cap on generated tokens. Default 8192.
+   *
+   * Was hardcoded at 2048 in the Gemini adapter, sized for the correlation
+   * agent's short verdict. The circular-extraction schema is far larger — an
+   * observations array carrying a verbatim source span per claim — so a real
+   * circular truncated mid-JSON and failed with "Unexpected end of JSON
+   * input", which the worker then classified as a PERMANENT invalid_response
+   * and never retried. A cap is a ceiling, not a reservation, so raising it
+   * costs the short-output callers nothing.
+   */
+  maxOutputTokens?: number;
 }
 
 // ─── Provider selection ──────────────────────────────────────────────────────
@@ -80,6 +92,12 @@ const OPENAI_COMPATIBLE_DEFAULTS: Readonly<Record<string, { baseUrl: string; mod
     model: "qwen-plus",
   },
 };
+
+/** Generated-token ceiling, overridable with LLM_MAX_OUTPUT_TOKENS. */
+function maxOutputTokens(): number {
+  const raw = Number(process.env["LLM_MAX_OUTPUT_TOKENS"]);
+  return Number.isInteger(raw) && raw > 0 ? raw : 8192;
+}
 
 function timeoutMs(fallback: number): number {
   const raw = Number(process.env["LLM_TIMEOUT_MS"] ?? process.env["GEMINI_TIMEOUT_MS"]);
@@ -102,6 +120,7 @@ function createGemini(): LLMProvider {
     model: process.env["LLM_MODEL"] ?? process.env["GEMINI_MODEL"] ?? "gemini-2.5-flash",
     timeoutMs: timeoutMs(45_000),
     maxRetries: 3,
+    maxOutputTokens: maxOutputTokens(),
   });
 }
 
@@ -131,6 +150,7 @@ function createOpenAICompatible(vendor: string): LLMProvider {
     model,
     timeoutMs: timeoutMs(45_000),
     maxRetries: 3,
+    maxOutputTokens: maxOutputTokens(),
   });
 }
 

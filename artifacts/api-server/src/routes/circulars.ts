@@ -39,6 +39,7 @@ import {
 import type { EventCircular, CircularExtraction } from "@workspace/db";
 
 import { logger } from "../lib/logger.js";
+import { configuredModelName, extractionEnabled } from "../circulars/extractionWorker.js";
 
 const router = Router();
 
@@ -326,6 +327,81 @@ router.get("/events/:id/timeline", async (req, res) => {
   } catch (err) {
     logger.error({ err, eventId: id }, "[circulars] GET /events/:id/timeline failed");
     res.status(500).json({ error: "Could not load the timeline for this event" });
+  }
+});
+
+// ─── GET /circulars/extraction-status ────────────────────────────────────────
+//
+// The state of the AI enrichment queue.
+//
+// Registered BEFORE /circulars/:circularId so Express does not treat
+// "extraction-status" as an id.
+//
+// Exists because "AI extraction failed" was previously only answerable with
+// psql. A researcher seeing that on a circular has no way to tell whether one
+// call timed out or nothing has been configured at all — and those call for
+// completely different actions.
+//
+// Reports the provider NAME, never a key. `configured: false` is the honest
+// answer when no credentials are present; the value itself stays server-side.
+
+router.get("/circulars/extraction-status", async (_req, res) => {
+  try {
+    const [statusRows, kindRows, coverage] = await Promise.all([
+      db
+        .select({ status: circularExtractions.status, count: sql<number>`count(*)::int` })
+        .from(circularExtractions)
+        .groupBy(circularExtractions.status),
+      db
+        .select({ kind: circularExtractions.failureKind, count: sql<number>`count(*)::int` })
+        .from(circularExtractions)
+        .where(eq(circularExtractions.status, "failed"))
+        .groupBy(circularExtractions.failureKind),
+      db.execute(sql`
+        SELECT
+          (SELECT count(*) FROM core.event_circulars)::int AS circulars,
+          (SELECT count(DISTINCT circular_pk) FROM core.circular_extractions
+            WHERE status = 'completed')::int AS extracted
+      `),
+    ]);
+
+    const byStatus: Record<string, number> = {
+      pending: 0,
+      processing: 0,
+      completed: 0,
+      failed: 0,
+    };
+    for (const r of statusRows) byStatus[r.status] = Number(r.count);
+
+    const cov =
+      ((coverage as unknown as { rows?: unknown[] }).rows as Record<string, unknown>[])?.[0] ??
+      (coverage as unknown as Record<string, unknown>[])[0] ??
+      {};
+
+    // Resolved rather than assumed: the worker reports the model it would
+    // actually use, which is "unconfigured" when no credentials exist.
+    const model = configuredModelName();
+
+    res.json({
+      /** false when CIRCULAR_AI_EXTRACTION=false — the loop is not running. */
+      enabled: extractionEnabled(),
+      /** false when no LLM credentials are present. Never the key itself. */
+      configured: model !== "unconfigured",
+      model,
+      byStatus,
+      /** Only meaningful for failures; distinguishes "retry later" from "cannot succeed". */
+      failuresByKind: kindRows.map((r) => ({
+        kind: r.kind ?? "unknown",
+        count: Number(r.count),
+      })),
+      coverage: {
+        circulars: Number(cov["circulars"] ?? 0),
+        extracted: Number(cov["extracted"] ?? 0),
+      },
+    });
+  } catch (err) {
+    logger.error({ err }, "[circulars] GET /circulars/extraction-status failed");
+    res.status(500).json({ error: "Could not load extraction status" });
   }
 });
 

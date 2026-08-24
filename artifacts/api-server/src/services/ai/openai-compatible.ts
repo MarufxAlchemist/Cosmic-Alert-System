@@ -48,6 +48,7 @@ export class OpenAICompatibleProvider implements LLMProvider {
   private readonly modelName: string;
   private readonly timeoutMs: number;
   private readonly maxRetries: number;
+  private readonly maxOutputTokens: number;
 
   constructor(config: OpenAICompatibleConfig) {
     if (!config.apiKey) {
@@ -61,6 +62,7 @@ export class OpenAICompatibleProvider implements LLMProvider {
     this.modelName = config.model;
     this.timeoutMs = config.timeoutMs ?? 45_000;
     this.maxRetries = config.maxRetries ?? 3;
+    this.maxOutputTokens = config.maxOutputTokens ?? 8192;
     this.name = `${config.vendor}/${this.modelName}`;
   }
 
@@ -116,7 +118,7 @@ export class OpenAICompatibleProvider implements LLMProvider {
           messages,
           // Low temperature: this is extraction, not composition.
           temperature: 0.1,
-          max_tokens: 4096,
+          max_tokens: this.maxOutputTokens,
           // Honoured by DeepSeek and Qwen compatible mode; harmlessly ignored
           // elsewhere. The agent strips fences anyway, so this is belt and
           // braces rather than a dependency.

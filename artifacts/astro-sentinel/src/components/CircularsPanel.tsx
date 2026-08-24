@@ -95,7 +95,7 @@ interface ExtractionData {
   notReported: string[];
 }
 
-interface Extraction {
+export interface Extraction {
   status: "none" | "pending" | "processing" | "completed" | "failed";
   data?: ExtractionData | null;
   model?: string | null;
@@ -157,7 +157,7 @@ const DETECTION_STYLE: Record<DetectionState, { label: string; cls: string }> = 
   unknown: { label: "Not stated", cls: "text-muted-foreground border-border/60 bg-muted/20" },
 };
 
-const ASSOCIATION_NOTE: Record<string, { label: string; cls: string; note: string | null }> = {
+export const ASSOCIATION_NOTE: Record<string, { label: string; cls: string; note: string | null }> = {
   EXACT: { label: "Matched by identifier", cls: "text-muted-foreground", note: null },
   ALIAS: {
     label: "Matched by alternate spelling",
@@ -177,7 +177,7 @@ const ASSOCIATION_NOTE: Record<string, { label: string; cls: string; note: strin
   UNMATCHED: { label: "Not attached", cls: "text-amber-400", note: null },
 };
 
-function utc(iso: string): string {
+export function utc(iso: string): string {
   return `${new Date(iso).toISOString().replace("T", " ").slice(0, 16)}Z`;
 }
 
@@ -203,7 +203,7 @@ function AiBlock({ children, label }: { children: React.ReactNode; label: string
   );
 }
 
-function ExtractionStatusLine({ extraction }: { extraction: Extraction }) {
+export function ExtractionStatusLine({ extraction }: { extraction: Extraction }) {
   switch (extraction.status) {
     case "completed":
       return (
@@ -240,7 +240,7 @@ function ExtractionStatusLine({ extraction }: { extraction: Extraction }) {
  * about the circular. "AI extraction failed" must not be mistakable for "this
  * circular reported nothing".
  */
-function ExtractionView({ extraction }: { extraction: Extraction }) {
+export function ExtractionView({ extraction }: { extraction: Extraction }) {
   if (extraction.status !== "completed" || !extraction.data) {
     const message =
       extraction.status === "failed"

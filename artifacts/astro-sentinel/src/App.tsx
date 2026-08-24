@@ -20,6 +20,7 @@ import ResearchWorkspacePage from "@/pages/research-workspace";
 import BookmarksPage from "@/pages/bookmarks";
 import WebSocketDebug from "@/pages/websocket-debug";
 import SettingsPage from "@/pages/settings";
+import CircularDetailPage from "@/pages/circular-detail";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 
@@ -80,6 +81,14 @@ function Router() {
           <Route path="/settings">
             <ProtectedRoute>
               <SettingsPage />
+            </ProtectedRoute>
+          </Route>
+          {/* A circular is normally read on its event's page, but 43,166 of the
+              44,766 here are attached to no event, so they need a home of their
+              own. Search linked here before this route existed and hit 404. */}
+          <Route path="/circulars/:circularId">
+            <ProtectedRoute>
+              <CircularDetailPage />
             </ProtectedRoute>
           </Route>
           <Route path="/debug/ws" component={WebSocketDebug} />

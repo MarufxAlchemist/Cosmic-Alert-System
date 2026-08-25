@@ -11,6 +11,7 @@ import { startKafkaConsumer } from "./lib/kafkaConsumer";
 import { runBootstrap } from "./lib/bootstrap";
 import { startDispatcher } from "./notifications/notificationDispatcher";
 import { startExtractionWorker } from "./circulars/extractionWorker";
+import { reportEmailConfig } from "./notifications/emailService";
 
 const rawPort = process.env["PORT"];
 
@@ -86,6 +87,12 @@ wss.on("connection", (ws, req) => {
 
 server.listen(port, () => {
   logger.info({ port }, "Server listening (HTTP + WebSocket)");
+
+  // ── CAN THIS DEPLOYMENT SEND MAIL? ───────────────────────────────────────
+  // Answered once, out loud, at boot. Every provider otherwise only finds out
+  // at send time, so the first symptom of a broken mail setup was an
+  // invitation that never arrived and nobody noticed.
+  reportEmailConfig();
 
   // ── SIMULATOR (no-op) ────────────────────────────────────────────────────
   // startIngestion() is kept here for import compatibility but does nothing.

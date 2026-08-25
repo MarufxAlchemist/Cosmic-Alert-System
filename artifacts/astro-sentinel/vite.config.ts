@@ -58,7 +58,20 @@ export default defineConfig({
     },
     proxy: {
       "/api": {
-        target: "http://127.0.0.1:8000",
+        /**
+         * The api-server, on this machine, unless told otherwise.
+         *
+         * Overridable because 127.0.0.1:8000 is not always the local
+         * api-server. A VS Code Remote-SSH session forwards a remote port by
+         * binding 127.0.0.1, and that bind takes precedence over the local
+         * server's 0.0.0.0 / :: — so with a remote session open, this dev
+         * server proxies every API call to the REMOTE deployment. The UI looks
+         * local while showing another machine's database, which is a very
+         * confusing way to spend an afternoon.
+         *
+         * Set API_PROXY_TARGET (e.g. http://[::1]:8000) to pin it.
+         */
+        target: process.env.API_PROXY_TARGET ?? "http://127.0.0.1:8000",
         changeOrigin: true,
         ws: true,
       },

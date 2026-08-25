@@ -219,6 +219,80 @@ class SendGridEmailProvider implements EmailProvider {
 // Factory
 // ---------------------------------------------------------------------------
 
+/**
+ * Report, at boot, whether this deployment can send mail at all.
+ *
+ * Every provider only discovers its own misconfiguration at SEND time, which
+ * means the first evidence of a broken mail setup is a team invitation that
+ * quietly never arrives — days later, to someone who is not watching the logs.
+ *
+ * A Docker deployment is the usual way to end up here: `.env` is gitignored,
+ * so the SMTP block never travels with the repo, EMAIL_PROVIDER falls back to
+ * the compose default of "none", and the container comes up perfectly healthy
+ * with no way to send a single message.
+ *
+ * This states the situation once, at startup, in terms an operator can act on.
+ * It deliberately does not throw: mail is not required to serve the archive,
+ * and refusing to boot over it would take the whole dashboard down for a
+ * feature most sessions never touch.
+ */
+export function reportEmailConfig(): void {
+  const provider = (process.env["EMAIL_PROVIDER"] ?? "none").toLowerCase();
+
+  if (provider === "none") {
+    logger.warn(
+      "[notifications] EMAIL_PROVIDER is unset or 'none' — NO email can be sent from this " +
+        "deployment. Team invitations will be created and shown as undelivered, and the admin " +
+        "must pass the invite link on by hand. Set EMAIL_PROVIDER=smtp|resend|sendgrid to fix.",
+    );
+    return;
+  }
+
+  /** Which variables each provider cannot work without. */
+  const required: Record<string, readonly string[]> = {
+    smtp: ["SMTP_HOST", "SMTP_USER", "SMTP_PASS"],
+    resend: ["RESEND_API_KEY"],
+    sendgrid: ["SENDGRID_API_KEY"],
+  };
+
+  const needed = required[provider];
+  if (!needed) {
+    logger.error(
+      { provider },
+      "[notifications] EMAIL_PROVIDER is not a provider this build knows. Expected smtp, resend, " +
+        "sendgrid or none. No mail will be sent.",
+    );
+    return;
+  }
+
+  const missing = needed.filter((k) => !(process.env[k] ?? "").trim());
+  if (missing.length > 0) {
+    logger.error(
+      { provider, missing },
+      `[notifications] EMAIL_PROVIDER=${provider} but ${missing.join(", ")} ${missing.length === 1 ? "is" : "are"} ` +
+        "not set. Every send will fail at the moment it is attempted. In Docker, check that these " +
+        "are present in the .env file ON THE HOST RUNNING THE CONTAINER — it is gitignored and does " +
+        "not travel with a git pull.",
+    );
+    return;
+  }
+
+  // Never log the credential itself, only that one is present.
+  logger.info(
+    { provider, from: process.env["NOTIFICATION_FROM_EMAIL"] ?? process.env["SMTP_USER"] ?? "(unset)" },
+    "[notifications] Email is configured",
+  );
+
+  if (!(process.env["PUBLIC_APP_URL"] ?? "").trim()) {
+    logger.warn(
+      "[notifications] PUBLIC_APP_URL is not set. Mail CAN be sent, but every invitation link will " +
+        "point at http://localhost:5173 — which on the recipient's machine is their own computer, " +
+        "so the invitation is undeliverable in practice. Set it to the address researchers actually " +
+        "use to reach this deployment.",
+    );
+  }
+}
+
 let _singleton: EmailProvider | null = null;
 
 /**

@@ -196,6 +196,24 @@ router.get("/team/invitations", requireAuth, async (req, res) => {
       role: i.role,
       expiresAt: i.expiresAt,
       createdAt: i.createdAt,
+      /**
+       * Whether the email actually went out — durable, not a toast that
+       * disappeared on the last reload. An invitation nobody could have
+       * received must keep saying so.
+       */
+      delivery: {
+        status: i.deliveryStatus,
+        provider: i.deliveryProvider,
+        error: i.deliveryError,
+        at: i.deliveryAt,
+      },
+      /**
+       * Present so an admin can hand the link over by any other channel when
+       * mail is not working. It is the same URL the email would have carried;
+       * possession of it is not an escalation, since accepting still requires
+       * registering with the invited address.
+       */
+      inviteUrl: buildInviteUrl(i.email),
     })),
   });
 });
@@ -332,6 +350,26 @@ router.post("/team/invitations", requireAdmin, async (req, res) => {
     const message = err instanceof Error ? err.message : String(err);
     delivery = { sent: false, provider: "unknown", skipped: false, error: message };
     logger.error({ err, targetEmail }, "[team] Invitation email threw — invitation was still created");
+  }
+
+  // Persist it. The response below tells the admin who is standing there right
+  // now; this is what tells the one who comes back tomorrow.
+  try {
+    await db
+      .update(labInvitations)
+      .set({
+        deliveryStatus: delivery.sent ? "sent" : delivery.skipped ? "skipped" : "failed",
+        // The CHECK constraint forbids an error on a successful send, and a
+        // successful send has nothing to explain.
+        deliveryError: delivery.sent ? null : delivery.error,
+        deliveryProvider: delivery.provider,
+        deliveryAt: new Date(),
+      })
+      .where(eq(labInvitations.id, invitation.id));
+  } catch (err) {
+    // Recording the outcome must never destroy the invitation itself: the row
+    // is valid and the link below still works, whatever the bookkeeping did.
+    logger.error({ err, invitationId: invitation.id }, "[team] Could not record invitation delivery status");
   }
 
   res.status(201).json({

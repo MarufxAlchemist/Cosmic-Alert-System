@@ -56,6 +56,17 @@ export const labInvitations = tenantSchema.table("lab_invitations", {
   expiresAt:  timestamp("expires_at", { withTimezone: true }).notNull(),
   acceptedAt: timestamp("accepted_at", { withTimezone: true }),
   createdAt:  timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+
+  // Whether the invitation email actually left the building.
+  //
+  // 'sent' | 'failed' | 'skipped' | 'unknown'. The default is 'unknown', not
+  // 'sent': a row that predates this column records no observation, and
+  // claiming delivery nobody witnessed is what made a broken mail setup look
+  // like a working one. See migration 0021.
+  deliveryStatus:   text("delivery_status").notNull().default("unknown"),
+  deliveryError:    text("delivery_error"),
+  deliveryProvider: text("delivery_provider"),
+  deliveryAt:       timestamp("delivery_at", { withTimezone: true }),
 });
 
 export type LabInvitation = typeof labInvitations.$inferSelect;

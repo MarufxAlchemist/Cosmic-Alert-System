@@ -148,6 +148,13 @@
       "when": 1784884352896,
       "tag": "0020_search_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1784884352897,
+      "tag": "0021_invitation_delivery",
+      "breakpoints": true
     }
   ]
 }

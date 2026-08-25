@@ -17,6 +17,21 @@ interface LabInvitation {
   role: string;
   expiresAt: string;
   createdAt: string;
+  /**
+   * Whether the email actually went out. Durable, unlike the post-submit
+   * panel, which vanished on the next reload and took the only evidence of a
+   * failed delivery with it.
+   *
+   * 'unknown' means the row predates the column — NOT that it was delivered.
+   */
+  delivery?: {
+    status: "sent" | "failed" | "skipped" | "unknown";
+    provider: string | null;
+    error: string | null;
+    at: string | null;
+  };
+  /** The register link, for handing over by another channel when mail fails. */
+  inviteUrl?: string;
 }
 
 interface InviteOutcome {
@@ -24,6 +39,64 @@ interface InviteOutcome {
   /** The register link. Always present — it is the recovery path when mail fails. */
   inviteUrl: string;
   delivery: { sent: boolean; provider: string; skipped: boolean; error: string | null };
+}
+
+/**
+ * Says so, permanently, when an invitation was created but never mailed.
+ *
+ * The post-submit panel already reported this, but it lived in component state
+ * and was gone after one reload — so a pending invitation nobody could have
+ * received looked identical to one that was delivered, and the invitee was
+ * left waiting for a message that does not exist.
+ *
+ * Renders nothing for a delivered invitation, and nothing for one whose
+ * outcome was never recorded: 'unknown' is an absence of evidence, and
+ * dressing it up as a warning would cry wolf over every row that predates the
+ * column.
+ */
+function UndeliveredNote({ invitation }: { invitation: LabInvitation }) {
+  const [copied, setCopied] = useState(false);
+  const d = invitation.delivery;
+  if (!d || d.status === "sent" || d.status === "unknown") return null;
+
+  const skipped = d.status === "skipped";
+
+  return (
+    <div className="mt-1.5 flex flex-col gap-1 rounded border border-amber-500/40 bg-amber-500/[0.06] px-2 py-1.5">
+      <div className="flex items-start gap-1.5 text-[10px] text-amber-600 dark:text-amber-400">
+        <AlertCircle className="mt-px h-3 w-3 shrink-0" />
+        <span>
+          <strong>Email not delivered.</strong>{" "}
+          {skipped
+            ? "No email provider is configured on the server, so nothing was sent. This person has not been told."
+            : (d.error ?? "The provider rejected the message.")}{" "}
+          Send them this link yourself:
+        </span>
+      </div>
+      {invitation.inviteUrl && (
+        <div className="flex items-center gap-1.5">
+          <code className="min-w-0 flex-1 truncate rounded bg-muted px-1.5 py-1 font-mono text-[9px] text-foreground">
+            {invitation.inviteUrl}
+          </code>
+          <button
+            type="button"
+            onClick={() => {
+              navigator.clipboard?.writeText(invitation.inviteUrl!).then(
+                () => {
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                },
+                () => undefined,
+              );
+            }}
+            className="shrink-0 rounded border border-border px-1.5 py-1 text-[9px] text-muted-foreground transition-colors hover:text-foreground"
+          >
+            {copied ? "Copied" : "Copy"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function TeamPage() {
@@ -251,6 +324,7 @@ export default function TeamPage() {
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-medium text-foreground">{i.email}</div>
                     <div className="text-[10px] text-muted-foreground">Expires: {new Date(i.expiresAt).toLocaleDateString()}</div>
+                    <UndeliveredNote invitation={i} />
                   </div>
                   <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono uppercase ${
                     i.role === "admin" ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"

@@ -46,7 +46,20 @@ const SHOTS = path.join(SKILL_DIR, ".shots");
 const PY_PORT = 8001;
 const API_PORT = 8000;
 const WEB_PORT = 5173;
-const BASE = `http://localhost:${WEB_PORT}`;
+/**
+ * Where the browser and `api` commands point.
+ *
+ * Overridable because `localhost` is not always this machine's dev server. VS
+ * Code Remote-SSH forwards a remote port by binding 127.0.0.1, and a bind to
+ * 127.0.0.1 WINS over the dev server's 0.0.0.0 — so with a remote session open,
+ * every request here silently reaches the REMOTE deployment instead. It looks
+ * like the local app with someone else's database: signed-out, wrong event
+ * counts, "User no longer exists".
+ *
+ * Set ASTRO_BASE_URL to this host's LAN address (or an IPv6 loopback, if the
+ * server binds ::) to be sure of which deployment you are driving.
+ */
+const BASE = process.env.ASTRO_BASE_URL?.replace(/\/+$/, "") ?? `http://localhost:${WEB_PORT}`;
 
 for (const d of [LOGS, SHOTS]) if (!existsSync(d)) mkdirSync(d, { recursive: true });
 

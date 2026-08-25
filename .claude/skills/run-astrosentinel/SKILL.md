@@ -59,6 +59,32 @@ The frontend is served by Vite in dev — no build step needed to run it.
 
 ---
 
+## Trap: `localhost` may not be this machine
+
+A VS Code Remote-SSH session forwards a remote port by binding **127.0.0.1**, and that bind
+takes precedence over the dev server's `0.0.0.0` / `::`. With a remote session open, both
+`http://localhost:5173` **and** the Vite `/api` proxy target `127.0.0.1:8000` reach the REMOTE
+deployment. The symptoms look like local breakage: the login form appears though you seeded a
+token, `/events/stats` returns the wrong counts, `/auth/me` says `User no longer exists`.
+
+Check before believing a failure:
+
+```bash
+powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort 5173,8000 -State Listen | Select LocalAddress,LocalPort,OwningProcess"
+```
+
+Two listeners on a port, one of them `127.0.0.1` owned by `Code`, means you are driving the
+remote. Pin both ends to this machine:
+
+```bash
+# start the stack with the proxy pinned to the local api-server
+API_PROXY_TARGET="http://[::1]:8000" node .claude/skills/run-astrosentinel/driver.mjs up
+# drive it by LAN address rather than localhost
+ASTRO_BASE_URL="http://192.168.x.x:5173" node .claude/skills/run-astrosentinel/driver.mjs smoke
+```
+
+---
+
 ## Run (agent path)
 
 ```bash

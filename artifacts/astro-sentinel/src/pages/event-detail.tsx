@@ -3,7 +3,7 @@ import { useParams, Link } from "wouter";
 import { useGetEvent, getGetEventQueryKey } from "@workspace/api-client-react";
 import { EventBadge } from "@/components/EventBadge";
 import { formatMicrosecondDate, formatLatency, formatDerived, formatMeasured, formatExp, formatFarInterval } from "@/lib/formatters";
-import { ArrowLeft, Target, Map, Activity, Clock, Zap, Database, FlaskConical, Bookmark, BookmarkCheck } from "lucide-react";
+import { ArrowLeft, Target, Map, Activity, Clock, Zap, Database, FlaskConical, Bookmark, BookmarkCheck, Maximize2, Minimize2 } from "lucide-react";
 import { CorrelationAnalysisPanel } from "@/components/CorrelationAnalysisPanel";
 import { ValidationPanel } from "@/components/ValidationPanel";
 import { DerivedSciencePanel } from "@/components/DerivedSciencePanel";
@@ -19,6 +19,16 @@ import { FitsLocalizationViewer } from "@/components/FitsLocalizationViewer";
 import { useAuth } from "@/lib/AuthContext";
 import { useScienceMode } from "@/lib/ScienceModeContext";
 import { Network } from "lucide-react";
+
+/**
+ * Height of the collapsed localization map, in px.
+ *
+ * Only the Aladin view needs it as a number - FitsLocalizationViewer is told
+ * its height rather than filling its box. The SkyMap view uses a 2:1 aspect
+ * ratio instead, which is the shape of the Aitoff projection it draws, so the
+ * sky fills the card edge to edge with no letterboxing.
+ */
+const MAP_HEIGHT_SMALL = 300;
 
 type CorrelationType = "multi_messenger" | "cross_detection" | "speculative";
 
@@ -49,6 +59,36 @@ export default function EventDetailPage() {
   const [bookmarked, setBookmarked] = useState(false);
   const [bookmarkLoading, setBookmarkLoading] = useState(false);
   const [mapView, setMapView] = useState<"skymap" | "aladin">("skymap");
+  const [mapExpanded, setMapExpanded] = useState(false);
+  /**
+   * Viewport height, tracked only so the enlarged Aladin view can be given a
+   * pixel height. The SkyMap fills its flex box on its own; Aladin does not.
+   */
+  const [viewportHeight, setViewportHeight] = useState(() => window.innerHeight);
+  const overlayViewerHeight = Math.max(320, Math.round(viewportHeight * 0.74));
+
+  useEffect(() => {
+    const onResize = () => setViewportHeight(window.innerHeight);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  // Escape closes the enlarged map, and the page behind it does not scroll
+  // while it is open — an overlay that leaves the document scrolling behind
+  // it loses the reader's place the moment they touch the wheel.
+  useEffect(() => {
+    if (!mapExpanded) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMapExpanded(false);
+    };
+    window.addEventListener("keydown", onKey);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [mapExpanded]);
   const [correlations, setCorrelations] = useState<Correlation[]>([]);
   const [correlationsLoading, setCorrelationsLoading] = useState(false);
 
@@ -231,20 +271,114 @@ export default function EventDetailPage() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="bg-black/50 rounded-lg overflow-hidden border border-border/50">
-                {mapView === "skymap" ? (
+              {/* The map sits small in the page. At a glance what is wanted
+                  from it is "roughly where on the sky", and a tall chart only
+                  pushed the science panels below the fold.
+
+                  Enlarging is deliberately NOT growing this box. The card is
+                  one column of a two-column grid, so the sky can never get
+                  wider than that column — a taller box would add empty bands
+                  above and below a map that is barely bigger. The enlarged
+                  view is an overlay across the whole viewport, where the
+                  projection actually has room to grow. */}
+              <div
+                className={`relative mx-auto w-full max-w-[560px] bg-black/50 rounded-lg overflow-hidden border border-border/50 ${
+                  mapView === "skymap" ? "aspect-[2/1] cursor-zoom-in" : ""
+                }`}
+                style={mapView === "skymap" ? undefined : { height: MAP_HEIGHT_SMALL }}
+                {...(mapView === "skymap"
+                  ? {
+                      role: "button" as const,
+                      tabIndex: 0,
+                      "aria-label": "Enlarge the localization map",
+                      onClick: () => setMapExpanded(true),
+                      onKeyDown: (e: React.KeyboardEvent) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setMapExpanded(true);
+                        }
+                      },
+                    }
+                  : {})}
+              >
+                {/* Aladin pans and zooms under the pointer, so click-anywhere
+                    is left off that view and this button is how it grows. It
+                    stops propagation so it never double-fires through the box
+                    handler above. */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMapExpanded(true);
+                  }}
+                  className="absolute top-2 right-2 z-10 inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-card/85 px-2.5 py-1 text-xs font-medium text-foreground shadow-sm backdrop-blur transition-colors hover:bg-card"
+                >
+                  <Maximize2 className="w-3.5 h-3.5" />
+                  Enlarge
+                </button>
+
+                {/* Exactly one viewer is mounted at a time. While the overlay
+                    is open the map lives there instead — a second Aladin
+                    behind it would spin up an entire second WebGL view that
+                    nobody can see. */}
+                {mapExpanded ? (
+                  <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+                    Shown enlarged
+                  </div>
+                ) : mapView === "skymap" ? (
                   <SkyMap events={[event]} />
                 ) : (
-                  <FitsLocalizationViewer
-                    event={event}
-                    height={500}
-                  />
+                  <FitsLocalizationViewer event={event} height={MAP_HEIGHT_SMALL} />
                 )}
               </div>
             </CardContent>
           </Card>
 
-          {/* Localization metadata panel — appears for GW events that have FITS products */}
+          {/* Enlarged map. Full-viewport, so the projection gets the width it
+              cannot have inside the card. Dismissed by the button, by Escape,
+              or by clicking the backdrop; the map itself swallows clicks so
+              dragging Aladin never closes it. */}
+          {mapExpanded && (
+            <div
+              className="fixed inset-0 z-50 flex flex-col gap-3 bg-background/95 p-4 backdrop-blur-sm md:p-8"
+              onClick={() => setMapExpanded(false)}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-sm">
+                  <Map className="w-4 h-4 text-primary" />
+                  <span className="font-medium">Localization Map</span>
+                  <span className="font-mono text-muted-foreground">{event.eventId}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMapExpanded(false);
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-card px-3 py-1.5 text-xs font-medium text-foreground shadow-sm transition-colors hover:bg-muted"
+                >
+                  <Minimize2 className="w-3.5 h-3.5" />
+                  Minimize
+                </button>
+              </div>
+
+              <div
+                className="min-h-0 flex-1 overflow-hidden rounded-lg border border-border/50 bg-black/50"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {mapView === "skymap" ? (
+                  <SkyMap events={[event]} />
+                ) : (
+                  <FitsLocalizationViewer event={event} height={overlayViewerHeight} />
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Localization metadata. Renders nothing unless the event actually
+              has FITS localization products, so this slot holds one panel —
+              Coordinate Data below — rather than two, one of which was an
+              empty card on every event in the archive. */}
           <LocalizationPanel eventId={event.id} />
 
           <Card className="bg-card border-border/50 shadow-none">
@@ -292,15 +426,20 @@ export default function EventDetailPage() {
             </CardContent>
           </Card>
 
-          {/* The evolving scientific history of this event: every machine
-              notice and every human-authored circular on one axis. Placed in
-              the wide column because circular subjects and AI extractions are
-              long-form content that a narrow sidebar would make unreadable. */}
-          <EvidenceTimeline eventId={String(event.id)} />
-
           {/* The circulars themselves, with the original text always reachable
-              and anything an AI read out of it clearly marked as such. */}
+              and anything an AI read out of it clearly marked as such. These
+              lead: the reports are what a reader comes to an event for, and
+              they are the densest thing on the page. Both panels sit in the
+              wide column because circular subjects and AI extractions are
+              long-form content that a narrow sidebar would make unreadable. */}
           <CircularsPanel eventId={String(event.id)} />
+
+          {/* The evolving scientific history of this event: every machine
+              notice and every human-authored circular on one axis. It follows
+              the circulars because it is the index over them — including the
+              machine notices they never mention — rather than a replacement
+              for reading them. */}
+          <EvidenceTimeline eventId={String(event.id)} />
         </div>
 
         <div className="space-y-6">

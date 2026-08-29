@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Layers } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -69,6 +68,19 @@ export function LocalizationPanel({ eventId }: Props) {
   // Latest-first; if none marked is_latest, show the first record
   const latest = records?.find((r) => r.isLatest) ?? records?.[0] ?? null;
 
+  // Localization products are FITS/HEALPix maps, which in practice only GW
+  // events carry. Rendering a whole card to announce their absence put two
+  // panels in a slot the event page wants one thing in, and it said the same
+  // empty sentence on every event in the archive. So the card appears only
+  // when there is something in it; Coordinate Data is what occupies the slot
+  // the rest of the time.
+  //
+  // A FAILED fetch still renders. "We could not find out" is not the same
+  // claim as "there is nothing here", and collapsing the two would be exactly
+  // the sort of quiet absence the rest of this page refuses to produce.
+  if (loading) return null;
+  if (!error && (records?.length ?? 0) === 0) return null;
+
   return (
     <Card className="bg-card border-border/50 shadow-none">
       <CardHeader>
@@ -78,31 +90,16 @@ export function LocalizationPanel({ eventId }: Props) {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        {/* Loading skeleton */}
-        {loading && (
-          <div className="space-y-2">
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-4 w-3/4" />
-            <Skeleton className="h-4 w-1/2" />
-          </div>
-        )}
-
         {/* Fetch error */}
-        {!loading && error && (
+        {error && (
           <p className="text-sm text-muted-foreground italic">
-            Could not load localization data.
-          </p>
-        )}
-
-        {/* No records */}
-        {!loading && !error && records?.length === 0 && (
-          <p className="text-sm text-muted-foreground italic">
-            No localization products available.
+            Could not load localization data, so whether this event has any is
+            unknown here.
           </p>
         )}
 
         {/* Data */}
-        {!loading && !error && latest && (
+        {!error && latest && (
           <div className="space-y-0">
             <Row label="Method"   value={latest.method} />
             <Row label="Version"  value={`v${latest.version}`} />

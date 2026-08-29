@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { AstroEvent } from '@workspace/api-client-react';
 import { useTheme } from '@/lib/ThemeContext';
 
@@ -51,20 +51,70 @@ export function SkyMap({ events, selectedEvent, onSelectEvent }: SkyMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const { isDark } = useTheme();
 
+  // The clip path and glow filter are referenced by id. Two maps on one page
+  // sharing those ids would both resolve to the first one's ellipse, clipping
+  // the second map to the wrong shape, so each instance gets its own.
+  // (useId can contain ':', which is legal in an id but awkward in a url(#...)
+  // reference, so it is stripped.)
+  const uid = useId().replace(/:/g, '');
+
+  /**
+   * The container's measured size, kept in state purely so that a resize
+   * re-runs the drawing effect below.
+   *
+   * The map is drawn imperatively into a cleared <svg>, so nothing redraws it
+   * on its own. Callers that change the box around it — the event page grows
+   * the card when the map is enlarged — would otherwise leave the sky at the
+   * size it happened to be measured at on mount, marooned inside a big empty
+   * card.
+   */
+  const [box, setBox] = useState({ w: 0, h: 0 });
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const ro = new ResizeObserver(() => {
+      const w = container.clientWidth;
+      const h = container.clientHeight;
+      // Same size means same drawing — bail before touching state, so an
+      // observer callback can never feed itself a render loop.
+      setBox((prev) => (prev.w === w && prev.h === h ? prev : { w, h }));
+    });
+    ro.observe(container);
+    return () => ro.disconnect();
+  }, []);
+
   useEffect(() => {
     const svg = svgRef.current;
     const container = containerRef.current;
     if (!svg || !container) return;
 
-    const W = container.clientWidth || 600;
-    const H = container.clientHeight || 340;
-    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-    svg.setAttribute('width', String(W));
-    svg.setAttribute('height', String(H));
+    const CW = container.clientWidth || 600;
+    const CH = container.clientHeight || 340;
+
+    // Aitoff is a 2:1 projection. Fit that shape inside whatever box the card
+    // gives us and centre it, rather than stretching the sky to the card's own
+    // aspect ratio. A stretched graticule misstates the shape of the sky: the
+    // apparent separation between two plotted events stops matching their real
+    // angular separation, which is the one thing a localization map is for.
+    const W = Math.min(CW, CH * 2);
+    const H = W / 2;
+    const ox = (CW - W) / 2;
+    const oy = (CH - H) / 2;
+
+    svg.setAttribute('viewBox', `0 0 ${CW} ${CH}`);
+    svg.setAttribute('width', String(CW));
+    svg.setAttribute('height', String(CH));
 
     while (svg.firstChild) svg.removeChild(svg.firstChild);
 
     const ns = 'http://www.w3.org/2000/svg';
+
+    // Everything below is drawn in projection coordinates (0..W, 0..H) and
+    // shifted into place once by this group, so the geometry maths stays as it
+    // was and only the framing changed.
+    const root = document.createElementNS(ns, 'g');
+    root.setAttribute('transform', `translate(${ox}, ${oy})`);
 
     // Theme-aware colours
     const colors = isDark ? {
@@ -87,7 +137,8 @@ export function SkyMap({ events, selectedEvent, onSelectEvent }: SkyMapProps) {
 
     // Defs
     const defs = document.createElementNS(ns, 'defs');
-    const clipId = 'sky-clip';
+    const clipId = `sky-clip-${uid}`;
+    const glowId = `glow-${uid}`;
     const clip = document.createElementNS(ns, 'clipPath');
     clip.setAttribute('id', clipId);
     const clipEllipse = document.createElementNS(ns, 'ellipse');
@@ -99,7 +150,7 @@ export function SkyMap({ events, selectedEvent, onSelectEvent }: SkyMapProps) {
     defs.appendChild(clip);
 
     const filter = document.createElementNS(ns, 'filter');
-    filter.setAttribute('id', 'glow');
+    filter.setAttribute('id', glowId);
     filter.setAttribute('x', '-50%'); filter.setAttribute('y', '-50%');
     filter.setAttribute('width', '200%'); filter.setAttribute('height', '200%');
     const feBlur = document.createElementNS(ns, 'feGaussianBlur');
@@ -112,6 +163,7 @@ export function SkyMap({ events, selectedEvent, onSelectEvent }: SkyMapProps) {
     filter.appendChild(feBlur); filter.appendChild(feMerge);
     defs.appendChild(filter);
     svg.appendChild(defs);
+    svg.appendChild(root);
 
     // Sky group (clipped)
     const skyGroup = document.createElementNS(ns, 'g');
@@ -267,7 +319,7 @@ export function SkyMap({ events, selectedEvent, onSelectEvent }: SkyMapProps) {
       dot.setAttribute('r', isSelected ? '5' : '3.5');
       dot.setAttribute('fill', color);
       dot.setAttribute('opacity', isSelected ? '1' : '0.85');
-      dot.setAttribute('filter', 'url(#glow)');
+      dot.setAttribute('filter', `url(#${glowId})`);
       g.appendChild(dot);
 
       const title = document.createElementNS(ns, 'title');
@@ -278,7 +330,7 @@ export function SkyMap({ events, selectedEvent, onSelectEvent }: SkyMapProps) {
       eventGroup.appendChild(g);
     });
     skyGroup.appendChild(eventGroup);
-    svg.appendChild(skyGroup);
+    root.appendChild(skyGroup);
 
     // Oval border
     const border = document.createElementNS(ns, 'ellipse');
@@ -287,7 +339,7 @@ export function SkyMap({ events, selectedEvent, onSelectEvent }: SkyMapProps) {
     border.setAttribute('fill', 'none');
     border.setAttribute('stroke', colors.border);
     border.setAttribute('stroke-width', '1.5');
-    svg.appendChild(border);
+    root.appendChild(border);
 
     // Legend
     const legendY = H - 16;
@@ -315,10 +367,10 @@ export function SkyMap({ events, selectedEvent, onSelectEvent }: SkyMapProps) {
       lbl.setAttribute('font-size', '10');
       lbl.setAttribute('fill', colors.legend);
       lg.appendChild(lbl);
-      svg.appendChild(lg);
+      root.appendChild(lg);
     });
 
-  }, [events, selectedEvent, onSelectEvent, isDark]);
+  }, [events, selectedEvent, onSelectEvent, isDark, box, uid]);
 
   return (
     <div ref={containerRef} className="w-full h-full">

@@ -247,7 +247,7 @@ All read-only and public, matching `/events` and `/events/:id/revisions`.
 | Endpoint | Returns |
 |---|---|
 | `GET /api/events/:id/circulars` | Circulars attached to an event, oldest first. `?includeSuperseded=true` also returns older versions. |
-| `GET /api/events/:id/timeline` | Notices **and** circulars on one chronological axis, each with its provenance. |
+| `GET /api/events/:id/timeline` | Notices **and** circulars on one chronological axis, newest first, each with its provenance. |
 | `GET /api/circulars/:circularId` | One circular in full, including the original body. `?version=N` selects a version. |
 | `GET /api/circulars/:circularId/versions` | Complete revision history, every version's text retained. |
 

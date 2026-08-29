@@ -8,6 +8,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
  * The evolving scientific history of one event on a single axis: every machine
  * Notice received for it, and every human-authored Circular attached to it.
  *
+ * Ordered newest first, by the server. The list grows for as long as an event
+ * is being followed up, so the latest evidence is the part a reader wants
+ * without scrolling. This component does not re-sort what it is given.
+ *
  * NOTHING HERE IS SYNTHESISED. Every row corresponds to a database row that
  * exists. An event with no revision history and no circulars shows an empty
  * timeline and says why — it does not get a fabricated "detected" marker to
@@ -219,9 +223,10 @@ export function EvidenceTimeline({ eventId }: { eventId: string }) {
           </span>
         </CardTitle>
         <p className="text-xs text-muted-foreground">
-          Trigger time <span className="font-mono">{utc(data.detectionTime)}</span>. Offsets below
-          are measured from it. Notice times are when Transient Event Detection received them;
-          circular times are when their authors published them.
+          Most recent first. Trigger time{" "}
+          <span className="font-mono">{utc(data.detectionTime)}</span>. Offsets below are measured
+          from it. Notice times are when Transient Event Detection received them; circular times
+          are when their authors published them.
         </p>
       </CardHeader>
 

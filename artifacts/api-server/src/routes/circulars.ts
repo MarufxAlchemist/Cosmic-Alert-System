@@ -211,7 +211,8 @@ router.get("/events/:id/circulars", async (req, res) => {
 // ─── GET /events/:id/timeline ────────────────────────────────────────────────
 //
 // The combined evidence timeline: every notice received for the event and
-// every circular attached to it, on one chronological axis.
+// every circular attached to it, on one chronological axis, ordered newest
+// first.
 //
 // Every entry carries `source`, `timestamp`, `type` and its provenance. No
 // entry is synthesised — each one corresponds to a row that exists, and an
@@ -313,7 +314,16 @@ router.get("/events/:id/timeline", async (req, res) => {
       });
     }
 
-    entries.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+    // Newest first. An event that is still developing is read from its latest
+    // evidence backwards, so the most recent notice or circular sits at the top
+    // rather than at the bottom of a list that grows for weeks.
+    //
+    // The reverse() before the sort matters: sort is stable, so entries sharing
+    // an identical timestamp (two notices received in the same second) would
+    // otherwise keep the ascending order they were built in and read backwards
+    // inside the tie. Reversing first makes ties descend too.
+    entries.reverse();
+    entries.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
 
     res.json({
       eventPk: String(event.id),

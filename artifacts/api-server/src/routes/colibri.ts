@@ -30,7 +30,7 @@ import { eq } from "drizzle-orm";
 import { db, eventsTable } from "@workspace/db";
 
 import { logger } from "../lib/logger.js";
-import { fetchAfterglow } from "../services/astro-colibri/client.js";
+import { fetchAfterglow, fetchFollowupSummary } from "../services/astro-colibri/client.js";
 
 const router: IRouter = Router();
 
@@ -65,6 +65,45 @@ router.get("/events/:id/colibri/afterglow", async (req, res) => {
   }
 
   res.json(afterglow);
+});
+
+/**
+ * Aggregated follow-up reports. Same identifier translation and the same
+ * 502-vs-{ available: false } split as the afterglow route above; the id parse
+ * and lookup are repeated rather than extracted, matching how routes/events.ts
+ * writes each handler out in full.
+ */
+router.get("/events/:id/colibri/followup", async (req, res) => {
+  const id = parseInt(req.params["id"] ?? "", 10);
+  if (!Number.isInteger(id) || id <= 0) {
+    res.status(400).json({ error: "Invalid event ID — must be a positive integer" });
+    return;
+  }
+
+  const [row] = await db
+    .select({ eventId: eventsTable.eventId })
+    .from(eventsTable)
+    .where(eq(eventsTable.id, BigInt(id)))
+    .limit(1);
+
+  if (!row) {
+    res.status(404).json({ error: "Event not found" });
+    return;
+  }
+
+  // Only the human-readable name crosses the boundary to Astro-COLIBRI.
+  const followup = await fetchFollowupSummary(row.eventId);
+
+  if (followup === null) {
+    logger.warn(
+      { eventId: row.eventId },
+      "[astro-colibri] followup upstream failure",
+    );
+    res.status(502).json({ error: "Astro-COLIBRI service unavailable" });
+    return;
+  }
+
+  res.json(followup);
 });
 
 export default router;

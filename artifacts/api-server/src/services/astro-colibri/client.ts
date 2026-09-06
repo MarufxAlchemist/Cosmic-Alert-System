@@ -173,3 +173,206 @@ export async function fetchAfterglow(eventId: string): Promise<ColibriAfterglow 
     clearTimeout(timer);
   }
 }
+
+/** How long the follow-up summary is given; it aggregates many circulars. */
+const FOLLOWUP_TIMEOUT_MS = 10000;
+
+export interface ColibriReport {
+  reportId: string;
+  reportUrl: string;
+  subject: string;
+  /** observatory_short_name when non-empty, else observatory. */
+  observatory: string;
+  instrument: string;
+  observationCategory: string;
+  /**
+   * The measured findings the circular reported. Upstream sends an array of
+   * separate statements; they are joined with newlines rather than commas so
+   * each stays a distinct claim, and the UI renders them line by line.
+   */
+  reportedResults: string;
+  authors: string;
+  contacts: string;
+  redshift: number | null;
+  hasOpticalFollowup: boolean;
+  hasPhotometry: boolean;
+  parsedAt: string;
+  /** LLM-generated — must be displayed with an explicit provenance label. */
+  aiSummary: string | null;
+  /** The model that wrote aiSummary. Shown beside it, never on its own. */
+  aiModel: string | null;
+}
+
+export interface ColibriFollowup {
+  available: boolean;
+  figureUrl: string | null;
+  reports: ColibriReport[];
+  /** Extracted from summary.contacts — real people, from circular headers. */
+  contacts: Array<{ name: string; email: string }>;
+  reportCount: number;
+}
+
+/** Astro-COLIBRI answered, and holds no follow-up for this event. */
+function noFollowup(): ColibriFollowup {
+  return { available: false, figureUrl: null, reports: [], contacts: [], reportCount: 0 };
+}
+
+/**
+ * Coerce an upstream value to display text.
+ *
+ * MEASURED SHAPES (verified 2026-09-06): `authors` and `reported_results` are
+ * arrays of strings, and `contacts` is an array of {name, email, ...} objects
+ * — NOT the plain strings an earlier spec described. Passing those through
+ * unchanged would render "[object Object]" in the UI, so each is normalised
+ * here. `separator` is a newline for reported_results so distinct findings do
+ * not merge into one run-on claim.
+ */
+function readText(value: unknown, separator = ", "): string {
+  if (typeof value === "string") return value.trim();
+  if (!Array.isArray(value)) return "";
+
+  return value
+    .map((item) => {
+      if (typeof item === "string") return item.trim();
+      const record = asRecord(item);
+      if (!record) return "";
+      return readString(record, "name") ?? readString(record, "email") ?? "";
+    })
+    .filter((s) => s !== "")
+    .join(separator);
+}
+
+/** A contact is only useful to a researcher if it carries a name or an email. */
+function readContacts(value: unknown): Array<{ name: string; email: string }> {
+  if (!Array.isArray(value)) return [];
+
+  const contacts: Array<{ name: string; email: string }> = [];
+  for (const item of value) {
+    const record = asRecord(item);
+    if (!record) continue;
+    const name = readString(record, "name") ?? "";
+    const email = readString(record, "email") ?? "";
+    if (name === "" && email === "") continue;
+    contacts.push({ name, email });
+  }
+  return contacts;
+}
+
+function toReport(value: unknown): ColibriReport | null {
+  const item = asRecord(value);
+  if (!item) return null;
+
+  const shortName = readString(item, "observatory_short_name");
+  const redshift = item["redshift"];
+
+  return {
+    reportId: readString(item, "report_id") ?? "",
+    reportUrl: readString(item, "report_url") ?? "",
+    subject: readString(item, "subject") ?? "",
+    observatory: shortName ?? readString(item, "observatory") ?? "",
+    instrument: readString(item, "instrument") ?? "",
+    observationCategory: readString(item, "observation_category") ?? "",
+    reportedResults: readText(item["reported_results"], "\n"),
+    authors: readText(item["authors"]),
+    contacts: readText(item["contacts"]),
+    redshift: typeof redshift === "number" && Number.isFinite(redshift) ? redshift : null,
+    hasOpticalFollowup: Boolean(item["has_optical_followup"]),
+    hasPhotometry: Boolean(item["has_photometry"]),
+    parsedAt: readString(item, "parsed_at") ?? "",
+    aiSummary: readString(item, "summary"),
+    aiModel: readString(item, "model"),
+  };
+}
+
+const FOLLOWUP_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+// Astro-COLIBRI: ~100 units/day; /followup_summary costs ~5 units per call
+const followupCache = new Map<string, { data: ColibriFollowup; expiresAt: number }>();
+
+/**
+ * Fetch the aggregated follow-up summary for one event.
+ *
+ * The fetch is inlined rather than delegated to getJson for the same reason as
+ * fetchAfterglow: a 404 from this endpoint means "we hold nothing for this
+ * event", which is an answer, not an outage. getJson collapses every non-2xx
+ * into null and so cannot express that distinction.
+ *
+ * CACHING
+ * -------
+ * Confirmed data is held in-process for six hours. Only { available: true }
+ * results are stored: an upstream failure and a definite negative both stay
+ * uncached so the next request retries them, which keeps a transient outage
+ * from being frozen into a six-hour "no data" for an event that has some.
+ * The cache is memory-only and dies with the process — deliberately, since
+ * this is a rate-limit shield rather than a source of truth.
+ *
+ * @param eventId The HUMAN-READABLE event name (e.g. "GRB210822A").
+ * @returns null when Astro-COLIBRI could not be reached at all.
+ */
+export async function fetchFollowupSummary(
+  eventId: string,
+): Promise<ColibriFollowup | null> {
+  const cached = followupCache.get(eventId);
+  if (cached && Date.now() < cached.expiresAt) {
+    logger.debug({ eventId }, "[astro-colibri] followup cache hit");
+    return cached.data;
+  }
+
+  const url = `${API_BASE}/followup_summary?name=${encodeURIComponent(eventId)}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FOLLOWUP_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      headers: { Accept: "application/json" },
+      signal: controller.signal,
+    });
+    // 404 = Astro-COLIBRI answered; they have no follow-up for this event.
+    if (res.status === 404) return noFollowup();
+    if (!res.ok) {
+      logger.warn(
+        { step: "followup", status: res.status, url },
+        "[astro-colibri] upstream returned a non-2xx response",
+      );
+      return null;
+    }
+
+    const payload = asRecord(await res.json());
+    if (!payload) return noFollowup();
+
+    const figure = asRecord(payload["figure"]);
+    const figureUrl = figure ? readString(figure, "url") : null;
+
+    const rawReports = payload["reports"];
+    const reports = Array.isArray(rawReports)
+      ? rawReports.map(toReport).filter((r): r is ColibriReport => r !== null)
+      : [];
+
+    const summary = asRecord(payload["summary"]);
+    const contacts = summary ? readContacts(summary["contacts"]) : [];
+
+    const result: ColibriFollowup = {
+      available: true,
+      figureUrl,
+      reports,
+      contacts,
+      reportCount: reports.length,
+    };
+    followupCache.set(eventId, {
+      data: result,
+      expiresAt: Date.now() + FOLLOWUP_CACHE_TTL_MS,
+    });
+    return result;
+  } catch (err) {
+    logger.warn(
+      {
+        step: "followup",
+        url,
+        err: err instanceof Error ? err.message : String(err),
+        timedOut: controller.signal.aborted,
+      },
+      "[astro-colibri] request failed",
+    );
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}

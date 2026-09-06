@@ -1,9 +1,10 @@
 import { useState } from "react";
 import type { AstroEvent } from "@workspace/api-client-react";
-import { Info, Map, Activity, BarChart2 } from "lucide-react";
+import { Info, Map, Activity, BarChart2, FileSearch } from "lucide-react";
 import { BasicInfo } from "./BasicInfo";
 import { SkyMap } from "./SkyMap";
 import { Lightcurves } from "./Lightcurves";
+import { FollowupReports } from "./FollowupReports";
 import { SpectralFit } from "./SpectralFit";
 import { DerivedParameters } from "./DerivedParameters";
 import { SpectralComparison } from "./SpectralComparison";
@@ -15,13 +16,14 @@ interface Props {
   event: AstroEvent | null;
 }
 
-type Tab = "basic" | "skymap" | "lightcurves" | "spectral";
+type Tab = "basic" | "skymap" | "lightcurves" | "spectral" | "followup";
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: "basic", label: "Basic Info", icon: <Info className="w-3 h-3" /> },
   { id: "skymap", label: "Skymap", icon: <Map className="w-3 h-3" /> },
   { id: "lightcurves", label: "Lightcurves", icon: <Activity className="w-3 h-3" /> },
   { id: "spectral", label: "Spectral Fit", icon: <BarChart2 className="w-3 h-3" /> },
+  { id: "followup", label: "Follow-up", icon: <FileSearch className="w-3 h-3" /> },
 ];
 
 export function SciencePanel({ event }: Props) {
@@ -109,6 +111,12 @@ export function SciencePanel({ event }: Props) {
             <div className="flex-1 min-h-0 rounded border border-border bg-card overflow-hidden">
               <SpectralComparison event={event} />
             </div>
+          </div>
+        )}
+
+        {activeTab === "followup" && (
+          <div className="flex-1 min-h-0 rounded border border-border bg-card overflow-hidden">
+            <FollowupReports event={event} />
           </div>
         )}
       </div>

@@ -1,10 +1,11 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useAstroWebSocket } from "@/hooks/useAstroWebSocket";
 import { useListEvents } from "@workspace/api-client-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { AstroEvent } from "@workspace/api-client-react/src/generated/api.schemas";
 import { formatMicrosecondDate, formatLatency, formatMeasured, formatExp, formatDerived } from "@/lib/formatters";
 import { useScienceMode } from "@/lib/ScienceModeContext";
+import { useAuth } from "@/lib/AuthContext";
 import { SciencePanel } from "@/components/SciencePanel";
 import { MissionControlBar } from "@/components/MissionControlBar";
 
@@ -157,18 +158,201 @@ function generateSummary(event: AstroEvent): string {
   return body;
 }
 
-function TeamDetails() {
+/** Panel heading, shared by the two right-panel data cards. */
+function PanelHeading({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">{children}</div>
+  );
+}
+
+/** Compact placeholder while a right-panel card is loading. */
+function RowsSkeleton({ rows = 3 }: { rows?: number }) {
+  return (
+    <div className="flex flex-col gap-1">
+      {Array.from({ length: rows }, (_, i) => (
+        <div key={i} className="h-3 bg-muted/30 rounded animate-pulse" />
+      ))}
+    </div>
+  );
+}
+
+const MAX_TEAM_MEMBERS = 6;
+const MAX_CIRCULAR_CONTACTS = 5;
+
+/** Only what this card renders. Emails are deliberately not read. */
+interface LabMember {
+  id: string;
+  name: string;
+  role: string;
+}
+
+/**
+ * The lab's own authenticated members, from /api/team.
+ *
+ * This replaces a mockup that printed "active" four times under fixed role
+ * labels with no data source behind any of it — status that was never measured.
+ * The green "Active" badge went with it for the same reason.
+ *
+ * Emails are NOT rendered. /api/team returns our own users' internal addresses;
+ * the right panel is a glanceable roster, not a contact surface. The
+ * Astro-COLIBRI contacts below are published circular authors, which is why
+ * those do carry an address.
+ */
+function LabTeam() {
+  const { token } = useAuth();
+  const [members, setMembers] = useState<LabMember[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    setLoading(true);
+    setError(false);
+    setMembers(null);
+
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    fetch("/api/team", { headers, signal: controller.signal })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        // The route answers { members: [...] }, not a bare array.
+        return (await res.json()) as { members?: LabMember[] };
+      })
+      .then((data) => {
+        setMembers(Array.isArray(data.members) ? data.members : []);
+        setLoading(false);
+      })
+      .catch((err: Error) => {
+        if (err.name === "AbortError") return;
+        setError(true);
+        setLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [token]);
+
+  const shown = members?.slice(0, MAX_TEAM_MEMBERS) ?? [];
+  const hidden = (members?.length ?? 0) - shown.length;
+
   return (
     <div className="rounded border border-border bg-card p-3 mb-3">
-      <div className="flex items-center justify-between mb-2">
-        <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Team details</div>
-        <div className="text-[9px] font-mono text-emerald-600 dark:text-emerald-400">Active</div>
+      <PanelHeading>Lab team</PanelHeading>
+      <div className="mt-2">
+        {loading && <RowsSkeleton rows={3} />}
+
+        {!loading && error && (
+          <div className="text-[10px] text-muted-foreground">Team data unavailable</div>
+        )}
+
+        {!loading && !error && members?.length === 0 && (
+          <div className="text-[10px] text-muted-foreground">No team members yet</div>
+        )}
+
+        {!loading && !error && shown.length > 0 && (
+          <div className="flex flex-col gap-1">
+            {shown.map((m) => (
+              <div key={m.id} className="flex items-center justify-between gap-2 text-[10px]">
+                <span className="text-foreground truncate">{m.name || "—"}</span>
+                <span className="bg-accent/30 rounded px-1 text-[9px] shrink-0">{m.role}</span>
+              </div>
+            ))}
+            {hidden > 0 && (
+              <div className="text-[10px] text-muted-foreground">and {hidden} more</div>
+            )}
+          </div>
+        )}
       </div>
-      <div className="grid grid-cols-2 gap-1.5 text-[10px] font-mono">
-        <div className="flex justify-between border-b border-border/50 pb-0.5"><span className="text-muted-foreground">PI</span><span className="text-foreground">active</span></div>
-        <div className="flex justify-between border-b border-border/50 pb-0.5"><span className="text-muted-foreground">Co-I</span><span className="text-foreground">active</span></div>
-        <div className="flex justify-between border-b border-border/50 pb-0.5"><span className="text-muted-foreground">Observer</span><span className="text-foreground">active</span></div>
-        <div className="flex justify-between border-b border-border/50 pb-0.5"><span className="text-muted-foreground">Analyst</span><span className="text-foreground">active</span></div>
+    </div>
+  );
+}
+
+/**
+ * GCN circular authors for the selected event, via Astro-COLIBRI.
+ *
+ * These are third-party researchers who published on this burst — NOT members
+ * of this installation's team, which is why they sit under their own heading
+ * with an explicit provenance sub-label rather than beside the lab roster.
+ *
+ * This repeats the request FollowupReports.tsx makes for its own tab. The
+ * duplicate is accepted: it is a localhost round-trip, and the api-server holds
+ * a six-hour cache, so the second call costs Astro-COLIBRI nothing.
+ */
+function CircularContacts({ event }: { event: AstroEvent }) {
+  const [contacts, setContacts] = useState<Array<{ name: string; email: string }> | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    setLoading(true);
+    setError(false);
+    setContacts(null);
+
+    // Our own api-server route — no bearer token, unlike /api/team.
+    fetch(`/api/events/${event.id}/colibri/followup`, { signal: controller.signal })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return (await res.json()) as {
+          available: boolean;
+          contacts?: Array<{ name: string; email: string }>;
+        };
+      })
+      .then((data) => {
+        setContacts(data.available && Array.isArray(data.contacts) ? data.contacts : []);
+        setLoading(false);
+      })
+      .catch((err: Error) => {
+        if (err.name === "AbortError") return;
+        setError(true);
+        setLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [event.id]);
+
+  const shown = contacts?.slice(0, MAX_CIRCULAR_CONTACTS) ?? [];
+  const hidden = (contacts?.length ?? 0) - shown.length;
+
+  return (
+    <div className="rounded border border-border bg-card p-3 mb-3">
+      <PanelHeading>Circular contacts</PanelHeading>
+      {/* Stated before any data, so the provenance is on screen even when the
+          list is empty or the lookup failed. */}
+      <div className="text-[9px] text-muted-foreground italic">
+        GCN circular authors · via Astro-COLIBRI
+      </div>
+      <div className="mt-2">
+        {loading && <RowsSkeleton rows={3} />}
+
+        {!loading && (error || shown.length === 0) && (
+          <div className="text-[10px] text-muted-foreground">
+            No circular contacts for this event
+          </div>
+        )}
+
+        {!loading && !error && shown.length > 0 && (
+          <div className="flex flex-col gap-1">
+            {shown.map((c, i) => (
+              <div key={`${c.email}-${i}`} className="flex flex-col">
+                <span className="text-[10px] text-foreground truncate">{c.name || "Unnamed"}</span>
+                {c.email && (
+                  <a
+                    href={`mailto:${c.email}`}
+                    className="text-[10px] text-muted-foreground hover:text-primary transition-colors truncate"
+                  >
+                    {c.email}
+                  </a>
+                )}
+              </div>
+            ))}
+            {hidden > 0 && (
+              <div className="text-[10px] text-muted-foreground">and {hidden} more</div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -220,7 +404,8 @@ function RightPanel({ event }: { event: AstroEvent | null }) {
     <div className="flex flex-col h-full">
       <ScrollArea className="flex-1 scrollbar-thin">
         <div className="p-3">
-          <TeamDetails />
+          <LabTeam />
+          <CircularContacts event={event} />
           <h3 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wider">Selected source:</h3>
           <p className="text-[11px] text-muted-foreground leading-relaxed font-sans">{summary}</p>
           <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] font-mono">

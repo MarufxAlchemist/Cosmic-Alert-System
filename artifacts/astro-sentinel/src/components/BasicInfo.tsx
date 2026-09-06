@@ -47,6 +47,13 @@ export function buildExternalLinks(event: AstroEvent) {
       // TNS cone search — 1 arcmin radius around the event position
       href: `https://www.wis-tns.org/search?ra=${ra}&decl=${dec}&radius=1&coords_unit=arcsec`,
     },
+    {
+      name: "Astro-COLIBRI",
+      desc: "Multi-messenger follow-up platform",
+      icon: "🌐",
+      // Astro-COLIBRI source page, keyed by the human-readable event ID
+      href: `https://astro-colibri.science/sources/${encodeURIComponent(event.eventId)}`,
+    },
   ];
 }
 
@@ -78,7 +85,7 @@ export function BasicInfo({ event }: Props) {
         <div className="flex items-center justify-between mb-1.5">
           <span className="text-[10px] text-muted-foreground uppercase tracking-wider">External information:</span>
           <div className="flex gap-1">
-            {[0, 1, 2, 3].map(i => (
+            {externalLinks.map((_, i) => (
               <div key={i} className={`w-1.5 h-1.5 rounded-full ${i === 0 ? "bg-primary" : "bg-border"}`} />
             ))}
           </div>

@@ -195,6 +195,10 @@ function RightPanel({ event }: { event: AstroEvent | null }) {
       name: "GCN", icon: "📡", desc: "Search GCN for this event",
       href: `https://gcn.nasa.gov/circulars?query=${encodeURIComponent(event.eventId)}&startDate=&endDate=`,
     },
+    {
+      name: "Astro-COLIBRI", icon: "🌐", desc: "Multi-messenger follow-up platform",
+      href: `https://astro-colibri.science/sources/${encodeURIComponent(event.eventId)}`,
+    },
     ...(hasPosition
       ? [
           {
@@ -235,7 +239,7 @@ function RightPanel({ event }: { event: AstroEvent | null }) {
       <div className="border-t border-border p-2 shrink-0">
         <div className="flex items-center justify-between mb-1.5">
           <span className="text-[10px] text-muted-foreground uppercase tracking-wider">External information:</span>
-          <div className="flex gap-1">{[0,1,2,3].map(i => <div key={i} className={`w-1.5 h-1.5 rounded-full ${i === 0 ? 'bg-primary' : 'bg-border'}`} />)}</div>
+          <div className="flex gap-1">{externalLinks.map((_, i) => <div key={i} className={`w-1.5 h-1.5 rounded-full ${i === 0 ? 'bg-primary' : 'bg-border'}`} />)}</div>
         </div>
         <div className="grid grid-cols-2 gap-1.5">{externalLinks.map(link => (<a key={link.name} href={link.href} target="_blank" rel="noopener noreferrer" className="flex gap-2 p-2 rounded border border-border bg-card hover:border-muted-foreground hover:bg-accent/30 transition-colors cursor-pointer no-underline"><span className="text-base leading-none shrink-0">{link.icon}</span><div><div className="text-[11px] font-semibold text-foreground">{link.name}</div><div className="text-[9px] text-muted-foreground leading-tight">{link.desc}</div></div></a>))}</div>
       </div>

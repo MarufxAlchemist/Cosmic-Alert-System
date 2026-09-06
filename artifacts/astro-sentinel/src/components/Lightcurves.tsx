@@ -64,19 +64,8 @@ export function Lightcurves({ event }: Props) {
     <div className="flex flex-col h-full p-3 gap-4 overflow-y-auto scrollbar-thin">
       {/* ── Optical afterglow context (Astro-COLIBRI) ───────────────────── */}
       <div>
-        <div className="flex items-center gap-1.5 mb-1.5">
-          <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">
-            Optical afterglow context · Astro-COLIBRI
-          </span>
-          <a
-            href={`https://astro-colibri.science/sources/${encodeURIComponent(event.eventId)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-muted-foreground hover:text-primary transition-colors"
-            aria-label={`Open ${event.eventId} on Astro-COLIBRI`}
-          >
-            <ExternalLink className="w-3 h-3" />
-          </a>
+        <div className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider mb-1.5">
+          Optical afterglow context · Astro-COLIBRI
         </div>
 
         {colibriLoading && (
@@ -96,9 +85,15 @@ export function Lightcurves({ event }: Props) {
               alt={`Optical afterglow context for ${event.eventId}`}
               className="w-full rounded object-contain max-h-56"
             />
-            <div className="mt-1 text-[10px] text-muted-foreground">
-              {colibri.observationCount} extracted observations · Astro-COLIBRI
-            </div>
+            <a
+              href={`https://astro-colibri.science/sources/${encodeURIComponent(event.eventId)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-primary transition-colors no-underline"
+            >
+              Astro-COLIBRI
+              <ExternalLink className="w-3 h-3" />
+            </a>
           </div>
         )}
 

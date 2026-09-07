@@ -156,3 +156,18 @@ export function circularContentHash(subject: string, body: string): string {
 export function gcnUrlFor(circularId: number): string {
   return `https://gcn.nasa.gov/circulars/${circularId}`;
 }
+
+/**
+ * Validate the `regexp_hints` sibling field on a `circular` WebSocket frame
+ * (see backend/app/gcn/circular_hints.py). Never throws — unlike the five
+ * fields above, a malformed or absent hints object is not a reason to reject
+ * an otherwise-good circular, so this returns null instead of raising.
+ *
+ * Deliberately untyped beyond "plain object": the hint set is regex output
+ * from a third-party package we do not own the schema of, and pinning its
+ * shape here would break silently on the package's next minor version.
+ */
+export function normalizeRegexpHints(raw: unknown): Record<string, unknown> | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  return raw as Record<string, unknown>;
+}

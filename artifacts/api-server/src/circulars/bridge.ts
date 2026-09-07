@@ -56,6 +56,11 @@ export async function handleCircularFrame(frame: Record<string, unknown>): Promi
       source: "kafka",
       modelName: configuredModelName(),
       broadcast: true,
+      // Sibling field on the frame, not inside `circular` — the Python
+      // consumer keeps its regex triage physically separate from the
+      // untouched GCN payload. See circular_hints.py and payload.ts's
+      // normalizeRegexpHints, which validates this defensively.
+      regexpHints: frame["regexp_hints"],
     });
 
     logger.info(

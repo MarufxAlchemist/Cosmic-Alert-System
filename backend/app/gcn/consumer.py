@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from gcn_kafka import Consumer
 
 from app.gcn import voevent
+from app.gcn.circular_hints import build_hints_safe
 from app.gcn.topics import ALL_TOPICS, CIRCULAR_TOPICS, TOPICS, get_topic_meta, is_circular_topic
 from app.gcn.normalizer import normalize
 from app.websocket.manager import manager, alert_buffer
@@ -226,13 +227,21 @@ async def process_circular(topic: str, value: str) -> None:
     deterministically. Guessing here — with no access to the event table —
     is how a circular ends up attached to the wrong burst.
 
+    The one exception is `regexp_hints`: deterministic, offline regex triage
+    from astro-colibri-circular-parser (see circular_hints.py) — content
+    labels like "likely_redshift_report" or "matched_terms", never a
+    coordinate, an event match, or anything that could misattach a burst. It
+    rides alongside the untouched payload, not inside it, so raw_payload on
+    the Node side stays exactly what GCN published.
+
     Envelope (schema_version 1):
     {
         "type":           "circular",
         "schema_version": "1",
         "sent_at":        ISO-8601,
         "sequence":       int,
-        "circular":       { ...the GCN payload, unmodified... }
+        "circular":       { ...the GCN payload, unmodified... },
+        "regexp_hints":   { ...deterministic content triage, or null... }
     }
 
     The payload key is "circular", not "event": a consumer that mistook one for
@@ -240,7 +249,9 @@ async def process_circular(topic: str, value: str) -> None:
     that never happened.
 
     Never raises. A malformed circular is logged and dropped at this hop; the
-    Kafka loop must not stop for it.
+    Kafka loop must not stop for it. A hints failure is not a malformed
+    circular — it degrades to `regexp_hints: null`, never to skipping the
+    circular (see build_hints_safe).
     """
     try:
         payload = json.loads(value)
@@ -257,12 +268,18 @@ async def process_circular(topic: str, value: str) -> None:
         print(f"[consumer] circular on {topic} has no circularId; skipped")
         return
 
+    regexp_hints = build_hints_safe(
+        payload.get("subject", ""),
+        payload.get("body", ""),
+    )
+
     envelope = {
         "type":           "circular",
         "schema_version": SCHEMA_VERSION,
         "sent_at":        datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
         "sequence":       next(_sequence_counter),
         "circular":       payload,
+        "regexp_hints":   regexp_hints,
     }
 
     # Circulars are NOT pushed into alert_buffer. That buffer replays *alerts*
@@ -276,5 +293,6 @@ async def process_circular(topic: str, value: str) -> None:
         f"[consumer] Broadcasted circular "
         f"topic={topic} circular_id={circular_id} "
         f"version={payload.get('version') or 1} "
-        f"event_id={payload.get('eventId')!r}"
+        f"event_id={payload.get('eventId')!r} "
+        f"hints={'yes' if regexp_hints is not None else 'none'}"
     )

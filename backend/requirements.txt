@@ -4,6 +4,20 @@ python-dotenv
 gcn-kafka
 websockets
 
+# ── GCN Circular parsing (Priority #5 — deterministic hints only) ───────────
+#
+# astro-colibri-circular-parser's full parse_circular() pipeline requires an
+# LLM provider (OpenAI by default) and will raise ValueError without one —
+# see circular_parser/pipeline.py. We deliberately import only
+# circular_parser.hints.build_regexp_hints(), which is pure, offline and
+# needs no API key: regex-only content triage (likely_photometry,
+# likely_redshift_report, matched_terms, ...), not the numeric RA/Dec
+# extraction AstroSentinel's own ingest pipeline does.
+#
+# Enabling the package's LLM extraction step is Priority #8, tracked
+# separately once a provider (and its credentials) are decided.
+astro-colibri-circular-parser==1.0.0
+
 # ── Cosmology and sky geometry ───────────────────────────────────────────────
 astropy>=6.1
 

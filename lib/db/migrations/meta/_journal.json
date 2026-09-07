@@ -155,6 +155,13 @@
       "when": 1784884352897,
       "tag": "0021_invitation_delivery",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1784884352898,
+      "tag": "0022_circular_regexp_hints",
+      "breakpoints": true
     }
   ]
 }

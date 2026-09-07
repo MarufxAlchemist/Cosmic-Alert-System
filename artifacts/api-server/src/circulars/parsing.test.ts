@@ -10,7 +10,12 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { parseCircular, circularContentHash, CircularValidationError } from "./payload.js";
+import {
+  parseCircular,
+  circularContentHash,
+  normalizeRegexpHints,
+  CircularValidationError,
+} from "./payload.js";
 
 /** A real archive record (GCN Circular 35176), body abbreviated. */
 const VALID = {
@@ -132,4 +137,22 @@ describe("content hash", () => {
     // and one circular would be served another's extraction.
     expect(circularContentHash("ab", "c")).not.toBe(circularContentHash("a", "bc"));
   });
+});
+
+describe("regexp hints (Priority #5 — astro-colibri-circular-parser)", () => {
+  it("passes through a plain object from the Python consumer unchanged", () => {
+    const hints = { likely_redshift_report: true, matched_terms: ["redshift"] };
+    expect(normalizeRegexpHints(hints)).toEqual(hints);
+  });
+
+  // The Python side sends null whenever the parser package is unavailable or
+  // the archive backfill (which never runs the Python step) supplies nothing.
+  // Both must degrade to null, never throw — a hints problem must never be
+  // why an otherwise-good circular gets rejected.
+  it.each([null, undefined, "a string", 42, [], true])(
+    "degrades non-object hints %s to null instead of throwing",
+    (raw) => {
+      expect(normalizeRegexpHints(raw)).toBeNull();
+    },
+  );
 });

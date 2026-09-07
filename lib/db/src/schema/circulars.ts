@@ -142,6 +142,22 @@ export const eventCirculars = coreSchema.table(
     /** The complete original GCN payload, so nothing unmodelled is lost. */
     rawPayload: jsonb("raw_payload").notNull().$type<Record<string, unknown>>(),
 
+    /**
+     * Deterministic, offline regex content triage from
+     * astro-colibri-circular-parser's `build_regexp_hints` (Priority #5) —
+     * booleans like `likely_redshift_report`, `matched_terms`,
+     * `context_snippets`. Computed once in the Python GCN consumer alongside
+     * the untouched payload above, never inside it.
+     *
+     * This is NOT an AI extraction and does not belong in
+     * core.circular_extractions: it is plain regex over text already in
+     * hand, with no model call and no event association, so a null value
+     * here means "not computed" (parser unavailable, or the archive backfill
+     * path, which does not run the Python hints step) — never "nothing
+     * matched" for a circular that could not be checked.
+     */
+    regexpHints: jsonb("regexp_hints").$type<Record<string, unknown> | null>(),
+
     /** SHA-256 over subject + body. Drives the extraction cache. */
     contentHash: text("content_hash").notNull(),
 

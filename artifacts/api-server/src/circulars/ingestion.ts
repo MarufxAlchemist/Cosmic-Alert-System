@@ -31,6 +31,7 @@ import {
   circularContentHash as hashContent,
   gcnUrlFor as buildGcnUrl,
   normalizeFormat as toStoredFormat,
+  normalizeRegexpHints as toStoredRegexpHints,
   parseCircular as parsePayload,
   type RawGcnCircular as RawCircular,
 } from "./payload.js";
@@ -77,10 +78,16 @@ export interface IngestResult {
  * existing row.
  *
  * @param source 'kafka' for the live stream, 'archive' for the backfill.
+ * @param regexpHints Deterministic regex triage from the Python GCN consumer
+ *   (see backend/app/gcn/circular_hints.py), or null/undefined when not
+ *   computed — always the case for `source: "archive"`, which does not run
+ *   that step. Never an AI extraction; stored as-is, not validated for
+ *   shape (see normalizeRegexpHints).
  */
 export async function persistCircular(
   raw: RawCircular,
   source: "kafka" | "archive" = "kafka",
+  regexpHints?: unknown,
 ): Promise<IngestResult> {
   const createdOn = new Date(raw.createdOn);
   const version = raw.version ?? 1;
@@ -122,6 +129,7 @@ export async function persistCircular(
     candidateEventPk: decision.candidateEventPk,
     associatedAt: new Date(),
     rawPayload: raw as unknown as Record<string, unknown>,
+    regexpHints: toStoredRegexpHints(regexpHints),
     contentHash: hashContent(raw.subject, raw.body),
     source,
   };
@@ -317,10 +325,16 @@ export async function enqueueExtraction(
  */
 export async function ingestCircular(
   payload: unknown,
-  options: { source?: "kafka" | "archive"; modelName: string; broadcast?: boolean } ,
+  options: {
+    source?: "kafka" | "archive";
+    modelName: string;
+    broadcast?: boolean;
+    /** See persistCircular's `regexpHints` param. Omitted by the archive backfill. */
+    regexpHints?: unknown;
+  },
 ): Promise<IngestResult> {
   const raw = parsePayload(payload);
-  const result = await persistCircular(raw, options.source ?? "kafka");
+  const result = await persistCircular(raw, options.source ?? "kafka", options.regexpHints);
 
   // Enrichment and broadcast are strictly after the source is safe.
   await enqueueExtraction(result.circular, options.modelName);

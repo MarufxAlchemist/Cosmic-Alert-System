@@ -209,6 +209,43 @@ def test_process_alert_routes_a_circular_topic_to_the_circular_path(
     assert broadcasts[0]["type"] == "circular"
 
 
+# ── Deterministic regexp hints (Priority #5) ──────────────────────────────────
+
+
+def test_regexp_hints_are_a_sibling_key_not_inside_circular(consumer_module, captured):
+    """
+    regexp_hints must ride alongside the raw payload, never inside it — the
+    Node side's raw_payload column is documented as the untouched GCN
+    payload, and a computed field leaking in there would break that.
+    """
+    broadcasts, _ = captured
+    asyncio.run(consumer_module.process_circular("gcn.circulars", json.dumps(CIRCULAR)))
+
+    envelope = broadcasts[0]
+    assert "regexp_hints" in envelope
+    assert "regexp_hints" not in envelope["circular"]
+    # This CIRCULAR body has no optical/photometry/redshift language, but the
+    # source name is always extractable from a well-formed GRB subject line.
+    assert envelope["regexp_hints"]["source_name"] == "GRB 231124A"
+
+
+def test_a_hints_failure_still_broadcasts_the_circular(consumer_module, captured, monkeypatch):
+    """
+    build_hints_safe already never raises (see test_circular_hints.py), but
+    this pins the consumer's side of the contract too: even if hints come
+    back None, the circular itself — the actual scientific source — must
+    still go out.
+    """
+    monkeypatch.setattr(consumer_module, "build_hints_safe", lambda *_a, **_k: None)
+
+    broadcasts, _ = captured
+    asyncio.run(consumer_module.process_circular("gcn.circulars", json.dumps(CIRCULAR)))
+
+    assert len(broadcasts) == 1
+    assert broadcasts[0]["regexp_hints"] is None
+    assert broadcasts[0]["circular"] == CIRCULAR
+
+
 # ── Malformed input ──────────────────────────────────────────────────────────
 
 

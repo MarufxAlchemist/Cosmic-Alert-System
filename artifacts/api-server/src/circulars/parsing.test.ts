@@ -150,12 +150,20 @@ describe("regexp hints (Priority #5 — astro-colibri-circular-parser)", () => {
   // the archive backfill (which never runs the Python step) supplies nothing.
   // Both must degrade to null, never throw — a hints problem must never be
   // why an otherwise-good circular gets rejected.
-  it.each([null, undefined, "a string", 42, [], true])(
-    "degrades non-object hints %s to null instead of throwing",
-    (raw) => {
-      expect(normalizeRegexpHints(raw)).toBeNull();
-    },
-  );
+  // Labelled rather than raw values: `%s` renders [] as "undefined", so the
+  // empty-array case was indistinguishable from the undefined case in the
+  // reporter — two tests with the same name, one of them silently unverifiable.
+  it.each([
+    { label: "null", raw: null },
+    { label: "undefined", raw: undefined },
+    { label: "a string", raw: "a string" },
+    { label: "a number", raw: 42 },
+    { label: "an empty array", raw: [] },
+    { label: "an array of entries", raw: [{ a: 1 }] },
+    { label: "a boolean", raw: true },
+  ])("degrades $label to null instead of throwing", ({ raw }) => {
+    expect(normalizeRegexpHints(raw)).toBeNull();
+  });
 });
 
 describe("extraction cost prefilter (shouldSkipExtraction)", () => {

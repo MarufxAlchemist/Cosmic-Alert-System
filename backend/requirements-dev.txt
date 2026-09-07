@@ -1,0 +1,17 @@
+# Development and test dependencies for the Python GCN backend.
+#
+# SEPARATE FROM requirements.txt ON PURPOSE. That file is the container's
+# runtime dependency list (Dockerfile.python installs it), and a test
+# framework has no business in a production image.
+#
+# The test suite could not be run from a clean checkout before this file
+# existed: backend/tests/ has 398 tests and pytest was declared nowhere —
+# not in requirements.txt, and there is no pyproject.toml or pytest.ini.
+#
+#   pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+#   pytest backend/tests/
+#
+# Unpinned, matching the style of requirements.txt's own direct entries.
+-r requirements.txt
+
+pytest

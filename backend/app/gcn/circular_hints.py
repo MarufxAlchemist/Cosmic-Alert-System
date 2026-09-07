@@ -40,6 +40,7 @@ event table and be broadcast. See `build_hints_safe`.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
@@ -56,6 +57,53 @@ except Exception as exc:  # pragma: no cover - defensive, e.g. package not insta
 def hints_available() -> bool:
     """Whether the parser package imported successfully."""
     return _build_regexp_hints is not None
+
+
+# ── OUR OWN SUPPLEMENTARY FLAG — NOT FROM circular_parser ────────────────────
+#
+# The upstream package's REGEXP_HINT_PATTERNS covers 27 terms: content words
+# (optical, afterglow, photometry, redshift, upper limit, ...) plus 17 named
+# facilities. Those 17 are GRB TRIGGER instruments (Fermi/GBM, Swift/BAT,
+# SVOM/ECLAIRs, INTEGRAL, Konus-Wind, GECAM, Einstein Probe) and OPTICAL
+# follow-up telescopes (MASTER, GOTO, LCO, KNC, VLT, GTC, Gemini, Liverpool,
+# REM, RATIR). It names no X-ray follow-up observatory and no radio facility
+# at all.
+#
+# That gap has a measured consequence. GCN Circulars 22372 and 22374 —
+# "GW170817/GRB170817A: Preliminary results of Chandra monitoring" and
+# "...Updated results from the full Chandra dataset", X-ray monitoring of the
+# first GW/GRB coincidence — set none of the upstream content flags, because
+# X-ray monitoring language uses none of that vocabulary. Anything gating on
+# the upstream flags alone treats them as content-free.
+#
+# So this flag is OURS, computed here, and deliberately named with a `local_`
+# prefix so it can never be mistaken for upstream output when it is read back
+# off core.event_circulars.regexp_hints. Keep it narrow: five unambiguous
+# major facilities, word-bounded. It is a guard against over-eager skipping,
+# not an attempt to reimplement the upstream vocabulary — and it is a HINT,
+# never a conclusion about what the circular reports.
+#
+# Do not "fix" this by editing the installed circular_parser package: it is
+# third-party code, and a local edit would be silently reverted by the next
+# pip install.
+_XRAY_RADIO_FACILITIES = re.compile(
+    r"\b(?:Chandra|XMM(?:[-\s]?Newton)?|NuSTAR|VLA|ATCA)\b",
+    re.IGNORECASE,
+)
+
+#: Key added to every successful hint set. Prefixed `local_` — see above.
+LOCAL_XRAY_RADIO_KEY = "local_likely_xray_radio_followup"
+
+
+def _local_xray_radio_followup(subject: str, body: str) -> bool:
+    """
+    Whether a major X-ray or radio follow-up facility is named.
+
+    Ours, not the upstream package's. See the comment above for why it
+    exists and why it stays narrow.
+    """
+    haystack = "{}\n{}".format(subject or "", body or "")
+    return bool(_XRAY_RADIO_FACILITIES.search(haystack))
 
 
 def build_hints_safe(subject: str, body: str) -> Optional[Dict[str, Any]]:
@@ -77,7 +125,15 @@ def build_hints_safe(subject: str, body: str) -> Optional[Dict[str, Any]]:
         return None
 
     try:
-        return _build_regexp_hints(subject or "", body or "")
+        hints = _build_regexp_hints(subject or "", body or "")
     except Exception as exc:
         logger.warning("[circular_hints] build_regexp_hints failed: %s", exc)
         return None
+
+    # Our supplementary flag rides alongside the upstream keys, distinguished
+    # by its `local_` prefix. Added only on the success path: a hint set is
+    # all-or-nothing, and a dict holding only our key would misrepresent what
+    # ran. A caller that sees None must not skip anything.
+    if isinstance(hints, dict):
+        hints[LOCAL_XRAY_RADIO_KEY] = _local_xray_radio_followup(subject, body)
+    return hints

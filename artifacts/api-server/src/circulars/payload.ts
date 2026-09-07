@@ -171,3 +171,87 @@ export function normalizeRegexpHints(raw: unknown): Record<string, unknown> | nu
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   return raw as Record<string, unknown>;
 }
+
+// ─── Extraction cost prefilter ───────────────────────────────────────────────
+
+/**
+ * The content flags that make a circular worth an AI extraction.
+ *
+ * The first six come from astro-colibri-circular-parser's
+ * `build_regexp_hints`. The seventh is OURS — see
+ * backend/app/gcn/circular_hints.py — and its `local_` prefix marks it as
+ * such wherever the hint set is read back.
+ *
+ * It exists because the upstream vocabulary's 17 named facilities are GRB
+ * trigger instruments and OPTICAL telescopes only: it names no X-ray
+ * follow-up observatory and no radio facility at all. Measured consequence:
+ * GCN Circulars 22372 and 22374, the Chandra X-ray monitoring of
+ * GW170817/GRB170817A, set none of the upstream flags.
+ */
+const SCIENTIFIC_CONTENT_FLAGS = [
+  "likely_optical_followup",
+  "likely_redshift_report",
+  "likely_retraction",
+  "likely_correction",
+  "likely_upper_limit",
+  "likely_high_energy_detection",
+  "local_likely_xray_radio_followup",
+] as const;
+
+/**
+ * Whether a circular may be denied an AI extraction to save a model call.
+ *
+ * Pure, and deliberately conservative: every uncertain case returns false
+ * (extract it). Two safety properties are structural rather than incidental,
+ * because both were established by measurement rather than assumption:
+ *
+ * 1. GRB ONLY. The hint vocabulary was built for GRB follow-up language and
+ *    covers nothing else. Measured over real archive circulars, a
+ *    "no content flags" rule skipped 99.2% of GW, 100% of FRB and 99.4% of
+ *    neutrino circulars — including the LVK collaboration's own compact
+ *    binary merger identification circulars, which carry the FAR, the
+ *    BNS/BBH/NSBH probabilities, the luminosity distance and the 90%
+ *    credible area. Those flags are silent on that language, so a
+ *    non-GRB circular is NEVER skipped here, whatever its flags say.
+ *
+ * 2. NULL HINTS NEVER SKIP. A null hint set means "not computed" — the
+ *    parser was unavailable, or this row came through the archive backfill,
+ *    which does not run the Python hints step. It does NOT mean "the regex
+ *    found nothing". All 44,777 rows that predate migration 0022 have null
+ *    hints, and treating null as skippable would silently disable extraction
+ *    for the entire existing archive.
+ *
+ * `contact_email_count` is included for parity with the upstream triage, not
+ * because our extraction captures contacts — it does not; the contacts shown
+ * in the UI come from Astro-COLIBRI's own /followup_summary endpoint.
+ */
+export function shouldSkipExtraction(
+  normalizedEventId: string | null | undefined,
+  regexpHints: unknown,
+): boolean {
+  // Safety property 1 — see above.
+  if (!normalizedEventId || !normalizedEventId.toUpperCase().startsWith("GRB")) {
+    return false;
+  }
+
+  // Safety property 2 — see above. normalizeRegexpHints returns null for
+  // anything that is not a plain object, so a malformed hint set is treated
+  // exactly like an absent one.
+  const hints = normalizeRegexpHints(regexpHints);
+  if (hints === null) return false;
+
+  // Any TRUTHY value blocks the skip, not just a literal `true`. The upstream
+  // package returns booleans today, but a future version returning a match
+  // count or a matched-term string must read as "there is content here",
+  // never as "not literally true, therefore absent". The asymmetry is
+  // deliberate: the cost of a needless extraction is one model call; the cost
+  // of a wrong skip is a silently missing scientific record.
+  for (const flag of SCIENTIFIC_CONTENT_FLAGS) {
+    if (hints[flag]) return false;
+  }
+
+  // Same rule: 0 and absent are skippable, anything else is content.
+  if (hints["contact_email_count"]) return false;
+
+  return true;
+}

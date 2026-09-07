@@ -96,7 +96,8 @@ interface ExtractionData {
 }
 
 export interface Extraction {
-  status: "none" | "pending" | "processing" | "completed" | "failed";
+  /** "skipped": a deliberate decision not to run extraction, not a failure. */
+  status: "none" | "pending" | "processing" | "completed" | "failed" | "skipped";
   data?: ExtractionData | null;
   model?: string | null;
   schemaVersion?: number;
@@ -224,6 +225,14 @@ export function ExtractionStatusLine({ extraction }: { extraction: Extraction })
           <AlertTriangle className="w-3 h-3" /> AI extraction failed
         </span>
       );
+    // Muted, not amber: nothing went wrong. A deliberate cost decision must
+    // not wear the colour this panel uses for faults.
+    case "skipped":
+      return (
+        <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+          <HelpCircle className="w-3 h-3" /> AI extraction not run
+        </span>
+      );
     default:
       return (
         <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
@@ -247,7 +256,9 @@ export function ExtractionView({ extraction }: { extraction: Extraction }) {
         ? "AI extraction failed for this circular. The original text above is complete and unaffected — nothing scientific is missing from this page."
         : extraction.status === "pending" || extraction.status === "processing"
           ? "AI extraction has not finished yet. The original text above is complete."
-          : "No AI extraction has been run for this circular. The original text above is complete.";
+          : extraction.status === "skipped"
+            ? "This circular was not sent for AI extraction: a routine GRB report with no scientific-content signal in its text. No model call was made — this is not a failure, and not a finding that the circular reported nothing. The original text above is complete."
+            : "No AI extraction has been run for this circular. The original text above is complete.";
 
     return (
       <div className="rounded-md border border-border/50 bg-muted/10 p-3">

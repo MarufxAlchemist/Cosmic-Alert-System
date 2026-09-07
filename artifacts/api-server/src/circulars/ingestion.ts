@@ -33,6 +33,7 @@ import {
   normalizeFormat as toStoredFormat,
   normalizeRegexpHints as toStoredRegexpHints,
   parseCircular as parsePayload,
+  shouldSkipExtraction,
   type RawGcnCircular as RawCircular,
 } from "./payload.js";
 import { associateCircular } from "./association.js";
@@ -255,16 +256,7 @@ export async function enqueueExtraction(
   // The cache key. Identical content, schema, prompt and model produce an
   // identical hash, and the unique index turns the second attempt into a
   // no-op rather than a second call to a paid API.
-  const contentHash = createHash("sha256")
-    .update(
-      [
-        hashContent(circular.subject, circular.body),
-        `schema:${EXTRACTION_SCHEMA_VERSION}`,
-        `prompt:${EXTRACTION_PROMPT_VERSION}`,
-        `model:${modelName}`,
-      ].join("|"),
-    )
-    .digest("hex");
+  const contentHash = extractionContentHash(circular, modelName);
 
   try {
     const inserted = await db
@@ -312,6 +304,94 @@ export async function enqueueExtraction(
   }
 }
 
+// ─── Extraction cost prefilter ───────────────────────────────────────────────
+
+/**
+ * Opt-in, and off unless explicitly set to "true".
+ *
+ * Default-off is the point: the filter declines to spend model calls on
+ * circulars a regex judged routine, and a regex judgement is a weaker thing
+ * than the extraction it replaces. An operator turns this on knowingly.
+ */
+function skipNonScientificEnabled(): boolean {
+  return process.env["CIRCULAR_EXTRACTION_SKIP_NON_SCIENTIFIC"] === "true";
+}
+
+/**
+ * The extraction cache key: identical content, schema, prompt and model
+ * produce an identical hash.
+ *
+ * Shared by the queue and the skip paths deliberately — a skip is a decision
+ * about this exact content, so it must occupy the same key the extraction
+ * would have. A content revision yields a new hash and therefore a fresh
+ * decision.
+ */
+function extractionContentHash(
+  circular: Pick<EventCircular, "subject" | "body">,
+  modelName: string,
+): string {
+  return createHash("sha256")
+    .update(
+      [
+        hashContent(circular.subject, circular.body),
+        `schema:${EXTRACTION_SCHEMA_VERSION}`,
+        `prompt:${EXTRACTION_PROMPT_VERSION}`,
+        `model:${modelName}`,
+      ].join("|"),
+    )
+    .digest("hex");
+}
+
+/**
+ * Record that this circular was deliberately NOT sent for extraction.
+ *
+ * NEVER THROWS, for the same reason enqueueExtraction does not: the circular
+ * is already stored, and a bookkeeping failure must not undo that.
+ *
+ * A row is written rather than nothing being written at all. An absent row is
+ * indistinguishable from "not yet queued" — the state of every circular in
+ * the seconds after ingestion — so a silent skip would make a cost decision
+ * look like a stuck queue, which is exactly the confusion this status exists
+ * to prevent. See migration 0023.
+ */
+export async function recordSkippedExtraction(
+  circular: Pick<EventCircular, "id" | "circularId" | "version" | "subject" | "body">,
+  modelName: string,
+): Promise<boolean> {
+  try {
+    const inserted = await db
+      .insert(circularExtractions)
+      .values({
+        circularPk: circular.id,
+        status: "skipped",
+        schemaVersion: EXTRACTION_SCHEMA_VERSION,
+        promptVersion: EXTRACTION_PROMPT_VERSION,
+        contentHash: extractionContentHash(circular, modelName),
+        modelName,
+      })
+      // An answer for this content is already held — a real extraction, or a
+      // previous skip. Either way, nothing to do.
+      .onConflictDoNothing({
+        target: [circularExtractions.circularPk, circularExtractions.contentHash],
+      })
+      .returning({ id: circularExtractions.id });
+
+    if (inserted.length > 0) {
+      logger.info(
+        { circularId: circular.circularId, version: circular.version },
+        "[circulars] extraction skipped by cost prefilter — no model call made",
+      );
+    }
+    return inserted.length > 0;
+  } catch (err) {
+    logger.error(
+      { err, circularId: circular.circularId, version: circular.version },
+      "[circulars] could not record extraction skip — the circular itself is stored and visible",
+    );
+    return false;
+  }
+}
+
 // ─── The full path ───────────────────────────────────────────────────────────
 
 /**
@@ -337,7 +417,18 @@ export async function ingestCircular(
   const result = await persistCircular(raw, options.source ?? "kafka", options.regexpHints);
 
   // Enrichment and broadcast are strictly after the source is safe.
-  await enqueueExtraction(result.circular, options.modelName);
+  //
+  // The cost prefilter sits here rather than inside enqueueExtraction so that
+  // "we chose not to extract" and "we tried to queue and could not" stay
+  // visibly different operations.
+  if (
+    skipNonScientificEnabled() &&
+    shouldSkipExtraction(result.circular.normalizedEventId, options.regexpHints)
+  ) {
+    await recordSkippedExtraction(result.circular, options.modelName);
+  } else {
+    await enqueueExtraction(result.circular, options.modelName);
+  }
 
   if (options.broadcast !== false && result.isNew) {
     // A backfill of 44,766 circulars must not fire 44,766 WebSocket frames;

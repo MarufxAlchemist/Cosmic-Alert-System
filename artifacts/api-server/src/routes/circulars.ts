@@ -84,6 +84,17 @@ function formatExtraction(row: CircularExtraction | undefined) {
     status: row.status,
     /** Present only when status === 'completed'. */
     data: row.status === "completed" ? row.extraction : null,
+    /**
+     * Says why there is no payload, when the reason was a choice rather than
+     * a failure or a wait. Without this a skip renders as a blank panel
+     * indistinguishable from a stuck queue. See migration 0023.
+     */
+    note:
+      row.status === "skipped"
+        ? "Not sent for extraction: routine GRB circular with no scientific-content " +
+          "signal in its text. No model call was made — this is not a failure, and " +
+          "not a finding that the circular reports nothing."
+        : null,
     // Provenance: which model, which prompt, which schema, when.
     model: row.provider ?? row.modelName ?? null,
     schemaVersion: row.schemaVersion,

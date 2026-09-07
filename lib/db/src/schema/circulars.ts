@@ -224,6 +224,18 @@ export const CIRCULAR_EXTRACTION_STATUSES = [
   "processing",
   "completed",
   "failed",
+  /**
+   * A deliberate decision NOT to send this circular to the AI provider — the
+   * CIRCULAR_EXTRACTION_SKIP_NON_SCIENTIFIC cost prefilter (migration 0023).
+   *
+   * No model call was made. This is not `completed` (nothing was extracted,
+   * and rendering it as a finding would assert the AI read the circular and
+   * found nothing), not `failed` (nothing went wrong), and not an absent row
+   * (indistinguishable from "not yet queued"). It carries no payload and is
+   * invisible to the worker's due-queue, whose index is partial on
+   * ('pending', 'processing').
+   */
+  "skipped",
 ] as const;
 
 export type CircularExtractionStatus = (typeof CIRCULAR_EXTRACTION_STATUSES)[number];
